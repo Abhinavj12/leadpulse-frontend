@@ -1,0 +1,146 @@
+:root {
+  --lp-primary: #0d6efd;
+  --lp-sidebar: #111827;
+  --lp-sidebar-muted: #9ca3af;
+  --lp-border: #e5e7eb;
+  --lp-page: #f8fafc;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--lp-page);
+  color: #1f2937;
+}
+
+a {
+  text-decoration: none;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%);
+}
+
+.auth-shell {
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.auth-brand {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+  font-size: 2rem;
+  background: linear-gradient(135deg, var(--lp-primary) 0%, #0284c7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.auth-card {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.12);
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  padding: 0.25rem;
+}
+
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap .form-control {
+  padding-right: 2.75rem;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  width: 250px;
+  background: var(--lp-sidebar);
+  color: white;
+  min-height: 100vh;
+}
+
+.app-sidebar .nav-link {
+  color: #d1d5db;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.app-sidebar .nav-link:hover,
+.app-sidebar .nav-link.active {
+  color: white;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.app-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.app-topbar {
+  min-height: 64px;
+  background: white;
+  border-bottom: 1px solid var(--lp-border);
+}
+
+.page-content {
+  padding: 1.5rem;
+}
+
+@media (max-width: 991.98px) {
+  .app-sidebar {
+    width: 220px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .app-sidebar {
+    display: none;
+  }
+
+  .page-content {
+    padding: 1rem;
+  }
+}
+
+/* Custom Utilities */
+.border-white-10 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.hover-bg:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: white !important;
+}
+
+.hover-bg-danger:hover {
+  background-color: #dc3545 !important;
+  color: white !important;
+}
