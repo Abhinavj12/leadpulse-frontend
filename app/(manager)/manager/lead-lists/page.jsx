@@ -43,6 +43,32 @@ export default function LeadListsPage() {
   const [jobStatus, setJobStatus] = useState(null); // { status, processedRows, totalRows, errorCount }
   const pollIntervalRef = useRef(null);
 
+  // Import Job History state
+  const [historyJobs, setHistoryJobs] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyTotalJobs, setHistoryTotalJobs] = useState(0);
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+
+  const fetchImportHistory = async (clientId, page = 1) => {
+    if (!clientId) return;
+    setHistoryLoading(true);
+    try {
+      const res = await api.get(`/leads/imports?clientId=${clientId}&page=${page}&pageSize=5`);
+      setHistoryJobs(res.data.data || []);
+      if (res.data.pagination) {
+        setHistoryPage(res.data.pagination.page);
+        setHistoryTotalPages(res.data.pagination.totalPages);
+        setHistoryTotalJobs(res.data.pagination.total);
+      }
+    } catch (err) {
+      console.error("Failed to load import history", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     const loadClients = async () => {
@@ -68,6 +94,7 @@ export default function LeadListsPage() {
     let mounted = true;
     if (!selectedClientId) {
       setLeadLists([]);
+      setHistoryJobs([]);
       return;
     }
     const loadLists = async () => {
@@ -82,6 +109,8 @@ export default function LeadListsPage() {
       }
     };
     loadLists();
+    setHistoryPage(1);
+    fetchImportHistory(selectedClientId, 1);
     return () => { mounted = false; };
   }, [selectedClientId]);
 
@@ -102,6 +131,7 @@ export default function LeadListsPage() {
           if (selectedClientId) {
             const listRes = await api.get(`/lead-lists?clientId=${selectedClientId}`);
             setLeadLists(listRes.data.data);
+            fetchImportHistory(selectedClientId, 1);
           }
         }
       } catch (err) {
@@ -306,7 +336,8 @@ export default function LeadListsPage() {
       ) : clients.length === 0 ? (
         <AlertMessage variant="warning" message="No clients found. Please create a client first." />
       ) : (
-        <Card className="border-0 shadow-sm" style={{ borderRadius: '12px', overflow: 'hidden' }}>
+        <>
+          <Card className="border-0 shadow-sm" style={{ borderRadius: '12px', overflow: 'hidden' }}>
           <Card.Header className="bg-white border-bottom py-3">
             <Form.Group className="mb-0 d-flex align-items-center">
               <i className="bi bi-person-badge text-primary me-2 fs-5"></i>
@@ -380,6 +411,173 @@ export default function LeadListsPage() {
             )}
           </Card.Body>
         </Card>
+
+        {/* IMPORT JOB HISTORY (COLLAPSIBLE) */}
+        <Card className="border-0 shadow-sm mt-4" style={{ borderRadius: '12px', overflow: 'hidden' }}>
+          <Card.Header 
+            className="bg-white border-bottom py-3 d-flex justify-content-between align-items-center"
+            style={{ cursor: 'pointer' }}
+            onClick={() => setIsHistoryExpanded(!isHistoryExpanded)}
+          >
+            <div className="d-flex align-items-center gap-2">
+              <i className="bi bi-clock-history text-primary fs-5"></i>
+              <h5 className="fw-bold mb-0 text-dark">Import Job History</h5>
+              {clients.find(c => c.id === selectedClientId) && (
+                <span className="badge bg-light text-secondary border px-3 py-1 rounded-pill small fw-medium ms-2">
+                  Client: {clients.find(c => c.id === selectedClientId)?.name}
+                </span>
+              )}
+              {historyTotalJobs > 0 && (
+                <span className="badge bg-primary bg-opacity-10 text-primary rounded-pill px-2 py-1 small fw-bold">
+                  {historyTotalJobs} {historyTotalJobs === 1 ? 'job' : 'jobs'}
+                </span>
+              )}
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <span className="text-muted small fw-medium">{isHistoryExpanded ? 'Collapse' : 'Expand'}</span>
+              <Button variant="light" size="sm" className="rounded-circle p-1 d-flex align-items-center justify-content-center" style={{ width: '28px', height: '28px' }}>
+                <i className={`bi bi-chevron-${isHistoryExpanded ? 'up' : 'down'} fs-6`}></i>
+              </Button>
+            </div>
+          </Card.Header>
+
+          {isHistoryExpanded && (
+            <Card.Body className="p-0">
+              {historyLoading ? (
+                <div className="p-5 d-flex justify-content-center"><LoadingSpinner /></div>
+              ) : historyJobs.length > 0 ? (
+                <>
+                  <Table hover responsive className="mb-0 align-middle">
+                    <thead className="bg-light text-muted">
+                      <tr>
+                        <th className="px-4 py-3 fw-semibold border-bottom-0">Date & Time</th>
+                        <th className="px-4 py-3 fw-semibold border-bottom-0">Target List</th>
+                        <th className="px-4 py-3 fw-semibold border-bottom-0">File</th>
+                        <th className="px-4 py-3 fw-semibold border-bottom-0">Status</th>
+                        <th className="px-4 py-3 fw-semibold border-bottom-0 text-center">Rows Breakdown</th>
+                        <th className="px-4 py-3 fw-semibold border-bottom-0 text-end">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyJobs.map((job) => {
+                        const formattedDate = job.createdAt ? new Date(job.createdAt).toLocaleString(undefined, {
+                          year: 'numeric', month: 'short', day: 'numeric',
+                          hour: '2-digit', minute: '2-digit'
+                        }) : 'N/A';
+                        
+                        const statusVariant = 
+                          job.status === 'completed' ? 'success' :
+                          job.status === 'completed_with_errors' ? 'warning' :
+                          job.status === 'failed' ? 'danger' : 'info';
+
+                        return (
+                          <tr key={job.id}>
+                            <td className="px-4 py-3 text-dark fw-medium small">
+                              <i className="bi bi-calendar-event me-2 text-secondary"></i>
+                              {formattedDate}
+                            </td>
+                            <td className="px-4 py-3 fw-bold text-dark">
+                              {job.leadListName || "N/A"}
+                            </td>
+                            <td className="px-4 py-3 text-secondary small">
+                              <code>{job.originalFilename}</code>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`badge bg-${statusVariant} bg-opacity-10 text-${statusVariant} px-3 py-2 rounded-pill fw-bold text-uppercase`} style={{ fontSize: '0.65rem' }}>
+                                {job.status.replace(/_/g, ' ')}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center small">
+                              <div>Processed: <strong>{job.processedRows || 0}</strong> / Total: <strong>{job.totalRows || 0}</strong></div>
+                              {(job.newToAgency > 0 || job.matchedFromAgencyDatabase > 0 || job.alreadyMappedToClient > 0) && (
+                                <div className="text-muted mt-1" style={{ fontSize: '0.75rem' }}>
+                                  {job.newToAgency > 0 && <span className="badge bg-success bg-opacity-10 text-success me-1">+{job.newToAgency} New</span>}
+                                  {job.matchedFromAgencyDatabase > 0 && <span className="badge bg-primary bg-opacity-10 text-primary me-1">{job.matchedFromAgencyDatabase} Matched</span>}
+                                  {job.alreadyMappedToClient > 0 && <span className="badge bg-secondary bg-opacity-10 text-secondary">{job.alreadyMappedToClient} Skipped</span>}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-end">
+                              {job.hasErrorFile ? (
+                                <Button 
+                                  variant="outline-danger" 
+                                  size="sm" 
+                                  className="rounded-pill px-3 shadow-sm fw-semibold"
+                                  onClick={async () => {
+                                    try {
+                                      const res = await api.get(`/leads/imports/${job.id}/errors`, { responseType: 'blob' });
+                                      const url = window.URL.createObjectURL(new Blob([res.data]));
+                                      const link = document.createElement('a');
+                                      link.href = url;
+                                      link.setAttribute('download', `import_errors_${job.id.substring(0, 8)}.csv`);
+                                      document.body.appendChild(link);
+                                      link.click();
+                                      link.remove();
+                                      window.URL.revokeObjectURL(url);
+                                    } catch (e) {
+                                      alert("Failed to download error log.");
+                                    }
+                                  }}
+                                >
+                                  <i className="bi bi-download me-1"></i> Error Log
+                                </Button>
+                              ) : (
+                                <span className="text-muted small">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </Table>
+
+                  {/* PAGINATION CONTROLS */}
+                  {historyTotalPages > 1 && (
+                    <div className="d-flex justify-content-between align-items-center p-3 border-top bg-light">
+                      <span className="small text-muted">
+                        Page <strong>{historyPage}</strong> of <strong>{historyTotalPages}</strong> ({historyTotalJobs} total jobs)
+                      </span>
+                      <div className="d-flex gap-2">
+                        <Button 
+                          variant="outline-secondary" 
+                          size="sm" 
+                          className="rounded-pill px-3"
+                          disabled={historyPage <= 1 || historyLoading}
+                          onClick={() => {
+                            const prev = historyPage - 1;
+                            setHistoryPage(prev);
+                            fetchImportHistory(selectedClientId, prev);
+                          }}
+                        >
+                          <i className="bi bi-chevron-left me-1"></i> Previous
+                        </Button>
+                        <Button 
+                          variant="outline-secondary" 
+                          size="sm" 
+                          className="rounded-pill px-3"
+                          disabled={historyPage >= historyTotalPages || historyLoading}
+                          onClick={() => {
+                            const next = historyPage + 1;
+                            setHistoryPage(next);
+                            fetchImportHistory(selectedClientId, next);
+                          }}
+                        >
+                          Next <i className="bi bi-chevron-right ms-1"></i>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center text-muted py-5">
+                  <i className="bi bi-inbox fs-2 d-block mb-2 opacity-35"></i>
+                  No import history found for this client.
+                </div>
+              )}
+            </Card.Body>
+          )}
+        </Card>
+        </>
       )}
 
       <Modal show={showModal} onHide={handleClose} backdrop="static">

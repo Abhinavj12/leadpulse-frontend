@@ -29,8 +29,9 @@ const nav = {
   client: [
     ["/client/dashboard", "Dashboard", "bi-grid-1x2"],
     ["/client/campaigns", "Campaigns", "bi-megaphone"],
+    ["/client/sequences", "Cadences", "bi-diagram-3"],
     ["/client/leads", "Leads", "bi-person-lines-fill"],
-    ["/client/sequences", "Sequences", "bi-diagram-3"],
+    ["/client/reports", "Reports", "bi-file-earmark-bar-graph"],
     ["/client/billing", "Billing", "bi-receipt"],
     ["/client/profile", "Profile", "bi-person"]
   ]

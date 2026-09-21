@@ -461,6 +461,20 @@ export default function CampaignManagementDashboard()
     }
   };
 
+  const handleLoadDefaultTemplate = () => {
+    setEmailSettings({
+      subjectLine: "Exclusive Demo for {{company}} — Transform Your Outbound Pipeline",
+      senderName: "Nexsales Outreach Team",
+      emailBodyHtml: `<p>Hi {{first_name}},</p>
+<p>I noticed {{company}} has been scaling its operations recently. We help teams like yours streamline their workflows and increase efficiency by up to 30%.</p>
+<p>You can <a href="https://example.com/demo-video">watch our 2-minute demo video here</a> to see exactly how our platform works.</p>
+<p>If you're ready to chat about how we can support your growth, just click below:</p>
+<p>{{conversion_link}}</p>
+<p>Best,<br>
+The Acme Team</p>`
+    });
+  };
+
   const handleSaveDraft = async () =>
   {
     setIsSaving(true);
@@ -812,9 +826,19 @@ export default function CampaignManagementDashboard()
                       {campaign.type === "email" && (
                         <>
                           <hr className="my-4 text-muted" />
-                          <h6 className="fw-bold mb-3 text-secondary text-uppercase small tracking-wide">
-                            <i className="bi bi-envelope-fill me-2"></i> Email Configuration
-                          </h6>
+                          <div className="d-flex justify-content-between align-items-center mb-3">
+                            <h6 className="fw-bold mb-0 text-secondary text-uppercase small tracking-wide">
+                              <i className="bi bi-envelope-fill me-2"></i> Email Configuration
+                            </h6>
+                            <Button
+                              variant="outline-primary"
+                              size="sm"
+                              className="rounded-pill px-3 fw-semibold shadow-sm"
+                              onClick={handleLoadDefaultTemplate}
+                            >
+                              <i className="bi bi-file-earmark-arrow-down me-1"></i> Import Template
+                            </Button>
+                          </div>
                           <Row>
                             <Col md={6}>
                               <Form.Group className="mb-3">
