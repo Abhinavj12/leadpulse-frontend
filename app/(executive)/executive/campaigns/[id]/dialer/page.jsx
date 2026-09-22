@@ -330,6 +330,7 @@ export default function ExecutiveDialer() {
     try {
       await api.post(`/call/leads/${lead.campaignLeadId}/skip`);
       setSuccessMessage("Lead skipped — it'll come back after other leads have been worked.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       // Clear specific lead param and fetch next
       if (specificLeadId) {
         router.replace(`/executive/campaigns/${campaignId}/dialer`);
@@ -338,6 +339,7 @@ export default function ExecutiveDialer() {
       }
     } catch (err) {
       setSubmitError(getApiErrorMessage(err, "Failed to skip lead."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -347,6 +349,7 @@ export default function ExecutiveDialer() {
     const outcome = OUTCOMES.find(o => o.value === selectedOutcome);
     if (outcome?.needsCallback && !followUpDate) {
       setSubmitError("Please select a follow-up date for the callback.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -366,6 +369,7 @@ export default function ExecutiveDialer() {
       };
 
       await api.post(`/call/leads/${lead.campaignLeadId}/remarks`, payload);
+      window.scrollTo({ top: 0, behavior: "smooth" });
 
       if (selectedOutcome === "Converted") {
         setShowConversionModal(true);
@@ -380,6 +384,7 @@ export default function ExecutiveDialer() {
       }
     } catch (err) {
       setSubmitError(getApiErrorMessage(err, "Failed to log outcome. Please try again."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setSubmitting(false);
     }

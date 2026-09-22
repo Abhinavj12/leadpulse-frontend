@@ -11,6 +11,7 @@ import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import api from "@/lib/api/axios";
+import { ToastNotification } from "@/components/ui/ToastNotification";
 
 export default function ReportsPage() {
   const [clients, setClients] = useState([]);
@@ -21,6 +22,7 @@ export default function ReportsPage() {
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
 
   useEffect(() => {
     const loadInitial = async () => {
@@ -70,7 +72,7 @@ export default function ReportsPage() {
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
     } catch (e) {
-      alert("Failed to download report.");
+      setToast({ show: true, message: "Failed to download report.", variant: "danger" });
     }
   };
 
@@ -188,6 +190,7 @@ export default function ReportsPage() {
         </>
       )}
 
+      <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>
   );
 }

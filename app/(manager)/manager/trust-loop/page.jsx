@@ -11,6 +11,8 @@ import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ToastNotification } from "@/components/ui/ToastNotification";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
@@ -24,6 +26,14 @@ export default function ConversionApprovalsPage() {
   const [showRejectInput, setShowRejectInput] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Bootstrap modal confirm states
+  const [confirmApprove, setConfirmApprove] = useState(null); // remarkId or null
+  const [confirmReject, setConfirmReject] = useState(null);   // remarkId or null
+
+  // Toast notification state
+  const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
+  const showToast = (message, variant = "danger") => setToast({ show: true, message, variant });
 
   const loadData = async () => {
     try {
@@ -56,15 +66,14 @@ export default function ConversionApprovalsPage() {
       setRejectReason("");
       await loadData();
     } catch (err) {
-      alert(getApiErrorMessage(err, "Failed to review conversion."));
+      showToast(getApiErrorMessage(err, "Failed to review conversion."), "danger");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleConfirm = (remarkId) => {
-    if (!confirm("Are you sure you want to approve this conversion? This is final and will be billed to the client.")) return;
-    reviewConversion(remarkId, true);
+    setConfirmApprove(remarkId);
   };
 
   const handleRejectClick = (remarkId) => {
@@ -73,9 +82,11 @@ export default function ConversionApprovalsPage() {
   };
 
   const handleRejectSubmit = (remarkId) => {
-    if (!rejectReason.trim()) return alert("Please provide a rejection reason.");
-    if (!confirm("Are you sure you want to reject this conversion?")) return;
-    reviewConversion(remarkId, false, rejectReason);
+    if (!rejectReason.trim()) {
+      showToast("Please provide a rejection reason.", "warning");
+      return;
+    }
+    setConfirmReject(remarkId);
   };
 
   if (loading) return <AppLayout role="manager"><LoadingSpinner /></AppLayout>;
@@ -219,6 +230,38 @@ export default function ConversionApprovalsPage() {
           )}
         </Card.Body>
       </Card>
+
+      {/* Approve Conversion Confirm Modal */}
+      <ConfirmDialog
+        show={!!confirmApprove}
+        title="Approve Conversion"
+        message="Are you sure you want to approve this conversion? This is final and will be billed to the client."
+        confirmText="Yes, Approve"
+        variant="success"
+        isProcessing={isSubmitting}
+        onConfirm={() => { const id = confirmApprove; setConfirmApprove(null); reviewConversion(id, true); }}
+        onCancel={() => setConfirmApprove(null)}
+      />
+
+      {/* Reject Conversion Confirm Modal */}
+      <ConfirmDialog
+        show={!!confirmReject}
+        title="Reject Conversion"
+        message="Are you sure you want to reject this conversion?"
+        confirmText="Yes, Reject"
+        variant="danger"
+        isProcessing={isSubmitting}
+        onConfirm={() => { const id = confirmReject; setConfirmReject(null); reviewConversion(id, false, rejectReason); }}
+        onCancel={() => setConfirmReject(null)}
+      />
+
+      {/* Toast Notification */}
+      <ToastNotification
+        show={toast.show}
+        onClose={() => setToast(t => ({ ...t, show: false }))}
+        message={toast.message}
+        variant={toast.variant}
+      />
     </AppLayout>
   );
 }

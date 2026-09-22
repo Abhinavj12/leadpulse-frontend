@@ -15,6 +15,7 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
+import { ToastNotification } from "@/components/ui/ToastNotification";
 
 export default function ClientReportsHubPage() {
   const [sequences, setSequences] = useState([]);
@@ -23,6 +24,7 @@ export default function ClientReportsHubPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloadingKey, setDownloadingKey] = useState(null);
+  const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
 
   useEffect(() => {
     let mounted = true;
@@ -66,7 +68,7 @@ export default function ClientReportsHubPage() {
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
     } catch (e) {
-      alert(`Failed to download ${format.toUpperCase()} report.`);
+      setToast({ show: true, message: `Failed to download ${format.toUpperCase()} report.`, variant: "danger" });
     } finally {
       setDownloadingKey(null);
     }
@@ -234,6 +236,8 @@ export default function ClientReportsHubPage() {
           </Card.Body>
         </Card>
       )}
+
+      <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>
   );
 }

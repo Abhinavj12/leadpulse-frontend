@@ -57,10 +57,12 @@ export default function ClientProfilePage() {
       await api.patch("/auth/profile", profileForm);
       await refreshSession();
       setProfileMessage("Profile details updated successfully.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       setTimeout(() => setProfileMessage(""), 3000);
     } catch (error) {
       setProfileErrors(getFieldErrors(error));
       setProfileMessage(getApiErrorMessage(error, "Failed to update profile."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setProfileSubmitting(false);
     }
@@ -73,6 +75,7 @@ export default function ClientProfilePage() {
     
     if (passwordForm.newPassword !== passwordForm.confirmNewPassword) {
       setPasswordErrors({ confirmNewPassword: "New passwords do not match." });
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     
@@ -80,6 +83,7 @@ export default function ClientProfilePage() {
     try {
       await api.patch("/auth/change-password", passwordForm);
       setProfileMessage("Password changed successfully. Signing out all sessions...");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       setTimeout(async () => {
         await logout();
         window.location.href = "/login";
@@ -87,6 +91,7 @@ export default function ClientProfilePage() {
     } catch (error) {
       setPasswordErrors(getFieldErrors(error));
       setPasswordMessage(getApiErrorMessage(error, "Failed to change password."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setPasswordSubmitting(false);
     }

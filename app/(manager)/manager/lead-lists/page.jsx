@@ -14,6 +14,8 @@ import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ToastNotification } from "@/components/ui/ToastNotification";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
@@ -50,6 +52,13 @@ export default function LeadListsPage() {
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [historyTotalJobs, setHistoryTotalJobs] = useState(0);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+
+  // Archive confirm modal
+  const [archiveTargetId, setArchiveTargetId] = useState(null);
+
+  // Toast
+  const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
+  const showToast = (message, variant = "danger") => setToast({ show: true, message, variant });
 
   const fetchImportHistory = async (clientId, page = 1) => {
     if (!clientId) return;
@@ -222,7 +231,6 @@ export default function LeadListsPage() {
   };
 
   const archiveList = async (listId) => {
-    if (!confirm("Are you sure you want to archive this list?")) return;
     try {
       await api.patch(`/lead-lists/${listId}/archive`);
       const res = await api.get(`/lead-lists?clientId=${selectedClientId}`);
@@ -318,7 +326,7 @@ export default function LeadListsPage() {
                         link.remove();
                         window.URL.revokeObjectURL(url);
                       } catch (e) {
-                        alert("Failed to download error log.");
+                        showToast("Failed to download error log.", "danger");
                       }
                     }}
                   >
@@ -394,7 +402,7 @@ export default function LeadListsPage() {
                       <td className="px-4 py-3 text-secondary fw-medium">{new Date(list.createdAt).toLocaleDateString()}</td>
                       <td className="px-4 py-3 text-end">
                         {list.status === 'active' && (
-                          <Button variant="light" size="sm" className="text-danger fw-bold rounded-pill px-3 shadow-sm" onClick={() => archiveList(list.id)}>
+                          <Button variant="light" size="sm" className="text-danger fw-bold rounded-pill px-3 shadow-sm" onClick={() => setArchiveTargetId(list.id)}>
                             <i className="bi bi-archive me-1"></i> Archive
                           </Button>
                         )}
@@ -515,7 +523,7 @@ export default function LeadListsPage() {
                                       link.remove();
                                       window.URL.revokeObjectURL(url);
                                     } catch (e) {
-                                      alert("Failed to download error log.");
+                                      showToast("Failed to download error log.", "danger");
                                     }
                                   }}
                                 >
@@ -678,6 +686,25 @@ export default function LeadListsPage() {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      {/* Archive List Confirm Modal */}
+      <ConfirmDialog
+        show={!!archiveTargetId}
+        title="Archive Lead List"
+        message="Are you sure you want to archive this list? It will no longer be available for new campaigns."
+        confirmText="Yes, Archive"
+        variant="danger"
+        onConfirm={() => { const id = archiveTargetId; setArchiveTargetId(null); archiveList(id); }}
+        onCancel={() => setArchiveTargetId(null)}
+      />
+
+      {/* Toast */}
+      <ToastNotification
+        show={toast.show}
+        onClose={() => setToast(t => ({ ...t, show: false }))}
+        message={toast.message}
+        variant={toast.variant}
+      />
 
     </AppLayout>
   );

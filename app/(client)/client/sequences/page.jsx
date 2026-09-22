@@ -15,12 +15,14 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
+import { ToastNotification } from "@/components/ui/ToastNotification";
 
 export default function ClientSequencesPage() {
   const [sequences, setSequences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloadingId, setDownloadingId] = useState(null);
+  const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
 
   useEffect(() => {
     let mounted = true;
@@ -57,7 +59,7 @@ export default function ClientSequencesPage() {
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
     } catch (e) {
-      alert(`Failed to download sequence ${format.toUpperCase()} report.`);
+      setToast({ show: true, message: `Failed to download sequence ${format.toUpperCase()} report.`, variant: "danger" });
     } finally {
       setDownloadingId(null);
     }
@@ -177,6 +179,8 @@ export default function ClientSequencesPage() {
           </Col>
         )}
       </Row>
+
+      <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>
   );
 }

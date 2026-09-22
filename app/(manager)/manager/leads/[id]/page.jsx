@@ -33,6 +33,9 @@ export default function LeadDetailsPage({ params }) {
   const [statusUpdateTarget, setStatusUpdateTarget] = useState(null); // { listId, currentStatus }
   const [newStatus, setNewStatus] = useState("");
 
+  // DNC toggle confirm modal
+  const [showDncConfirm, setShowDncConfirm] = useState(false);
+
   const loadLead = async () => {
     if (!clientId) {
       setError("Missing clientId.");
@@ -61,7 +64,6 @@ export default function LeadDetailsPage({ params }) {
   }, [leadId, clientId]);
 
   const toggleDnc = async () => {
-    if (!confirm(`Are you sure you want to ${lead.dnc ? 'remove from' : 'add to'} Do Not Contact?`)) return;
     try {
       await api.patch(`/leads/${leadId}/dnc`, { clientId, dnc: !lead.dnc });
       setSuccessMessage(`DNC status updated successfully.`);
@@ -137,7 +139,7 @@ export default function LeadDetailsPage({ params }) {
           <Button 
             variant={lead.dnc ? "outline-secondary" : "outline-danger"} 
             className="fw-medium rounded-pill shadow-sm bg-white"
-            onClick={toggleDnc}
+            onClick={() => setShowDncConfirm(true)}
           >
             {lead.dnc ? "Remove DNC" : "Mark as DNC"}
           </Button>
@@ -316,6 +318,17 @@ export default function LeadDetailsPage({ params }) {
           </Card>
         </Col>
       </Row>
+
+      {/* DNC Toggle Confirm Modal */}
+      <ConfirmDialog
+        show={showDncConfirm}
+        title={lead.dnc ? "Remove Do Not Contact" : "Mark as Do Not Contact"}
+        message={`Are you sure you want to ${lead.dnc ? 'remove this lead from' : 'add this lead to'} the Do Not Contact list?`}
+        confirmText={lead.dnc ? "Yes, Remove DNC" : "Yes, Mark DNC"}
+        variant={lead.dnc ? "secondary" : "danger"}
+        onConfirm={() => { setShowDncConfirm(false); toggleDnc(); }}
+        onCancel={() => setShowDncConfirm(false)}
+      />
     </AppLayout>
   );
 }

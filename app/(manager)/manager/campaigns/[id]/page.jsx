@@ -20,6 +20,8 @@ import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ToastNotification } from "@/components/ui/ToastNotification";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
@@ -33,6 +35,18 @@ const OUTCOME_COLORS = {
   "Not Interested":     "#dc3545",
   "Wrong Number":       "#343a40",
   "Converted":          "#198754",
+};
+
+const resolveBannerPreviewUrl = (url) => {
+  if (!url) return "";
+  if (url.startsWith("blob:") || url.startsWith("data:")) return url;
+  if (url.includes("/uploads/local")) {
+    const keyMatch = url.match(/key=([^&]+)/);
+    if (keyMatch) {
+      return `http://localhost:4000/api/v1/uploads/local?key=${keyMatch[1]}`;
+    }
+  }
+  return url;
 };
 
 // ─── Inline performance mini-card for the assignment panel ───────────────────
@@ -299,9 +313,28 @@ export default function CampaignManagementDashboard()
   const [reassignTargetExecutive, setReassignTargetExecutive] = useState("");
 
   const [bannerImageUrl, setBannerImageUrl] = useState("");
+  const [bannerPreviewUrl, setBannerPreviewUrl] = useState("");
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [emailDispatches, setEmailDispatches] = useState([]);
   const [emailAnalytics, setEmailAnalytics] = useState(null);
+
+  // Call Campaign Progress
+  const [callProgress, setCallProgress] = useState(null);
+
+  // Email Dispatch Detail Modal
+  const [selectedDispatch, setSelectedDispatch] = useState(null);
+  const [loadingDispatchDetail, setLoadingDispatchDetail] = useState(false);
+  const [showDispatchDetailModal, setShowDispatchDetailModal] = useState(false);
+
+  // ── Modal/Confirm dialog states ──────────────────────────────────────────────
+  const [showDispatchConfirm, setShowDispatchConfirm] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [unassignTargetId, setUnassignTargetId] = useState(null);
+  const [showReassignConfirm, setShowReassignConfirm] = useState(false);
+
+  // ── Toast state ───────────────────────────────────────────────────────────────
+  const [toast, setToast] = useState({ show: false, message: "", variant: "info" });
+  const showToast = (message, variant = "info") => setToast({ show: true, message, variant });
 
   const loadData = async () =>
   {
@@ -329,6 +362,7 @@ export default function CampaignManagementDashboard()
           emailBodyHtml: campData.emailBodyHtml || "",
         });
         setBannerImageUrl(campData.bannerImageUrl || "");
+        setBannerPreviewUrl(campData.bannerImageUrl || "");
 
         // Fetch sibling campaigns in the same cadence for the "Target Leads from Prior Step" dropdown.
         // We ONLY offer cadence siblings here — they are the only campaigns guaranteed to share
@@ -361,11 +395,15 @@ export default function CampaignManagementDashboard()
 
           try
           {
-            const strRes = await api.get(`/campaigns/${campaignId}/stranded-leads`);
+            const [strRes, progRes] = await Promise.all([
+              api.get(`/campaigns/${campaignId}/stranded-leads`),
+              api.get(`/call/campaigns/${campaignId}/progress`)
+            ]);
             setStrandedLeads(strRes.data.data || []);
+            setCallProgress(progRes.data.data || null);
           } catch (e)
           {
-            console.error("Failed to load stranded leads", e);
+            console.error("Failed to load stranded leads or progress", e);
           }
         }
       }
@@ -433,9 +471,16 @@ export default function CampaignManagementDashboard()
   {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) return alert("File too large. Max 5MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("File too large. Max 5MB.", "warning");
+      return;
+    }
 
+    // Instant local preview for smooth UI rendering
+    const localBlobUrl = URL.createObjectURL(file);
+    setBannerPreviewUrl(localBlobUrl);
     setUploadingBanner(true);
+
     try
     {
       const presignRes = await api.post('/uploads/banner-url', {
@@ -445,16 +490,23 @@ export default function CampaignManagementDashboard()
       });
       const { uploadUrl, method, publicUrl } = presignRes.data.data;
 
-      await fetch(uploadUrl, {
+      const arrayBuffer = await file.arrayBuffer();
+      const uploadRes = await fetch(uploadUrl, {
         method: method,
-        body: file,
+        body: arrayBuffer,
         headers: { 'Content-Type': file.type }
       });
 
+      if (!uploadRes.ok) {
+        throw new Error("Failed to upload binary image payload to storage server.");
+      }
+
       setBannerImageUrl(publicUrl);
+      setBannerPreviewUrl(publicUrl);
+      showToast("Banner uploaded! Click 'Save Draft' below to save changes.", "success");
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to upload banner."));
+      showToast(getApiErrorMessage(err, "Failed to upload banner."), "danger");
     } finally
     {
       setUploadingBanner(false);
@@ -497,15 +549,17 @@ The Acme Team</p>`
         payload.subjectLine = emailSettings.subjectLine;
         payload.senderName = emailSettings.senderName;
         payload.emailBodyHtml = emailSettings.emailBodyHtml;
-        payload.bannerImageUrl = bannerImageUrl ? bannerImageUrl : null;
+        payload.bannerImageUrl = bannerImageUrl || null;
       }
 
       await api.patch(`/campaigns/${campaignId}`, payload);
       await loadData();
-      alert("Draft settings saved!");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      showToast("Draft settings saved!", "success");
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to save draft."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      showToast(getApiErrorMessage(err, "Failed to save draft."), "danger");
     } finally
     {
       setIsSaving(false);
@@ -521,7 +575,7 @@ The Acme Team</p>`
       router.push("/manager/campaigns");
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to delete draft campaign."));
+      showToast(getApiErrorMessage(err, "Failed to delete draft campaign."), "danger");
       setIsDeleting(false);
       setShowDeleteModal(false);
     }
@@ -529,15 +583,16 @@ The Acme Team</p>`
 
   const handleDispatchEmail = async () =>
   {
-    if (!confirm("Dispatch this email campaign now?")) return;
+    setShowDispatchConfirm(false);
     try
     {
       setIsDispatching(true);
       await api.post(`/email/campaigns/${campaignId}/dispatch`);
       await loadData();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to dispatch email."));
+      showToast(getApiErrorMessage(err, "Failed to dispatch email."), "danger");
     } finally
     {
       setIsDispatching(false);
@@ -546,14 +601,15 @@ The Acme Team</p>`
 
   const handleApprove = async () =>
   {
-    if (!confirm("Are you sure you want to approve this campaign? This will freeze the audience and cannot be undone.")) return;
+    setShowApproveConfirm(false);
     try
     {
       await api.patch(`/campaigns/${campaignId}/approve`);
       await loadData();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to approve campaign. Check requirements."));
+      showToast(getApiErrorMessage(err, "Failed to approve campaign. Check requirements."), "danger");
     }
   };
 
@@ -563,9 +619,10 @@ The Acme Team</p>`
     {
       await api.patch(`/campaigns/${campaignId}/${newStatus}`);
       await loadData();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err)
     {
-      alert(getApiErrorMessage(err, `Failed to change status to ${newStatus}.`));
+      showToast(getApiErrorMessage(err, `Failed to change status to ${newStatus}.`), "danger");
     }
   };
 
@@ -577,20 +634,20 @@ The Acme Team</p>`
       await loadData();
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to assign executive."));
+      showToast(getApiErrorMessage(err, "Failed to assign executive."), "danger");
     }
   };
 
   const unassignExecutive = async (execId) =>
   {
-    if (!confirm("Unassign executive? Their pending leads will be returned to the pool.")) return;
+    setUnassignTargetId(null);
     try
     {
       await api.delete(`/campaigns/${campaignId}/executives/${execId}`);
       await loadData();
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to unassign executive."));
+      showToast(getApiErrorMessage(err, "Failed to unassign executive."), "danger");
     }
   };
 
@@ -603,7 +660,7 @@ The Acme Team</p>`
       setPendingConversions(pcRes.data.data || []);
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to review conversion."));
+      showToast(getApiErrorMessage(err, "Failed to review conversion."), "danger");
     }
   };
 
@@ -611,9 +668,15 @@ The Acme Team</p>`
   {
     if (!reassignTargetExecutive || selectedStrandedLeads.length === 0)
     {
-      return alert("Select an executive and at least one lead.");
+      showToast("Select an executive and at least one lead.", "warning");
+      return;
     }
-    if (!confirm(`Reassign ${selectedStrandedLeads.length} leads?`)) return;
+    setShowReassignConfirm(true);
+  };
+
+  const doReassignLeads = async () =>
+  {
+    setShowReassignConfirm(false);
     try
     {
       await api.post(`/campaigns/${campaignId}/reassign-leads`, {
@@ -623,11 +686,24 @@ The Acme Team</p>`
       setSelectedStrandedLeads([]);
       setReassignTargetExecutive("");
       await loadData();
-      alert("Leads reassigned successfully.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err)
     {
-      alert(getApiErrorMessage(err, "Failed to reassign leads."));
+      showToast(getApiErrorMessage(err, "Failed to reassign leads."), "danger");
     }
+  };
+
+  const resolveBannerPreviewUrl = (url) => {
+    if (!url) return "";
+    if (url.startsWith("blob:")) return url;
+    if (url.includes("/uploads/local?key=")) {
+      const keyMatch = url.match(/key=([^&]+)/);
+      if (keyMatch) {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+        return `${apiUrl}/uploads/local?key=${keyMatch[1]}`;
+      }
+    }
+    return url;
   };
 
   if (loading) return <AppLayout role="manager"><LoadingSpinner /></AppLayout>;
@@ -648,7 +724,7 @@ The Acme Team</p>`
               <Button variant="outline-danger" onClick={() => setShowDeleteModal(true)} className="rounded-pill px-4 fw-bold shadow-sm d-flex align-items-center">
                 <i className="bi bi-trash-fill me-2"></i> Delete Draft
               </Button>
-              <Button variant="success" onClick={handleApprove} className="rounded-pill px-4 fw-bold shadow-sm d-flex align-items-center">
+              <Button variant="success" onClick={() => setShowApproveConfirm(true)} className="rounded-pill px-4 fw-bold shadow-sm d-flex align-items-center">
                 <i className="bi bi-check-circle me-2"></i> Approve Campaign
               </Button>
             </>
@@ -883,9 +959,14 @@ The Acme Team</p>`
 
                           <Form.Group className="mb-4">
                             <Form.Label className="fw-medium">Banner Image (Optional)</Form.Label>
-                            {bannerImageUrl && (
+                            {(bannerPreviewUrl || bannerImageUrl) && (
                               <div className="mb-3 p-2 border rounded bg-light d-inline-block">
-                                <img src={bannerImageUrl} alt="Banner Preview" className="img-fluid rounded" style={{ maxHeight: '120px' }} />
+                                <img
+                                  src={resolveBannerPreviewUrl(bannerPreviewUrl || bannerImageUrl)}
+                                  alt="Banner Preview"
+                                  className="img-fluid rounded"
+                                  style={{ maxHeight: '120px' }}
+                                />
                               </div>
                             )}
                             <Form.Control
@@ -1001,7 +1082,7 @@ The Acme Team</p>`
                               variant="outline-danger"
                               size="sm"
                               className="rounded-pill px-3"
-                              onClick={() => unassignExecutive(exec.id)}
+                              onClick={() => setUnassignTargetId(exec.id)}
                             >
                               <i className="bi bi-person-x me-1"></i>Unassign
                             </Button>
@@ -1175,6 +1256,75 @@ The Acme Team</p>`
                 </Col>
               </Row>
             )}
+
+            {/* CALL CAMPAIGN PROGRESS */}
+            {campaign.status !== "draft" && callProgress && (
+              <Row className="mt-4">
+                <Col md={12}>
+                  <Card className="border-0 shadow-sm rounded-4 overflow-hidden">
+                    <div style={{ height: "3px", background: "linear-gradient(90deg, #0d6efd, #6610f2)" }} />
+                    <Card.Header className="bg-white border-bottom fw-bold p-3 d-flex align-items-center gap-2">
+                      <i className="bi bi-graph-up-arrow text-primary"></i> Campaign Progress Overview
+                    </Card.Header>
+                    <Card.Body className="p-4">
+                      {/* Queue Breakdown */}
+                      <h6 className="fw-bold text-secondary small text-uppercase mb-3">Lead Queue Status</h6>
+                      <Row className="g-3 mb-4">
+                        {[
+                          { label: 'Total', value: callProgress.queue?.total, icon: 'bi-people-fill', color: 'secondary' },
+                          { label: 'Pending', value: callProgress.queue?.pending, icon: 'bi-hourglass-split', color: 'secondary' },
+                          { label: 'In Progress', value: callProgress.queue?.in_progress, icon: 'bi-arrow-repeat', color: 'warning' },
+                          { label: 'Called', value: callProgress.queue?.called, icon: 'bi-telephone-outbound', color: 'info' },
+                          { label: 'Completed', value: callProgress.queue?.completed, icon: 'bi-check-circle-fill', color: 'success' },
+                          { label: 'Skipped', value: callProgress.queue?.skipped, icon: 'bi-skip-forward-fill', color: 'danger' },
+                        ].map(stat => (
+                          <Col xs={6} sm={4} md={2} key={stat.label}>
+                            <div className="text-center p-3 border rounded-3 bg-light">
+                              <i className={`bi ${stat.icon} text-${stat.color} fs-4 d-block mb-1`}></i>
+                              <div className={`fw-bolder fs-4 text-${stat.color}`}>{stat.value ?? 0}</div>
+                              <div className="text-muted small text-uppercase fw-semibold" style={{ fontSize: '0.65rem' }}>{stat.label}</div>
+                            </div>
+                          </Col>
+                        ))}
+                      </Row>
+
+                      {/* Per-Executive Breakdown */}
+                      {callProgress.executives?.length > 0 && (
+                        <>
+                          <h6 className="fw-bold text-secondary small text-uppercase mb-3">Per-Executive Breakdown</h6>
+                          <Table responsive hover size="sm" className="mb-0">
+                            <thead className="bg-light">
+                              <tr>
+                                <th>Executive</th>
+                                <th className="text-center">Calls Logged</th>
+                                <th className="text-center">Avg Duration (min)</th>
+                                <th className="text-center">Conversions Claimed</th>
+                                <th className="text-center">Conversions Confirmed</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {callProgress.executives.map(exec => (
+                                <tr key={exec.executiveId}>
+                                  <td className="fw-medium">{exec.name}</td>
+                                  <td className="text-center">{exec.callsLogged}</td>
+                                  <td className="text-center">{exec.averageDurationMinutes ?? '—'}</td>
+                                  <td className="text-center">
+                                    <Badge bg="warning" text="dark">{exec.conversionsClaimed}</Badge>
+                                  </td>
+                                  <td className="text-center">
+                                    <Badge bg="success">{exec.conversionsConfirmed}</Badge>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </Table>
+                        </>
+                      )}
+                    </Card.Body>
+                  </Card>
+                </Col>
+              </Row>
+            )}
           </Tab>
         )}
 
@@ -1191,7 +1341,7 @@ The Acme Team</p>`
                       <h3 className="mb-3">Ready to Send?</h3>
                       <p className="text-muted mb-4">The audience is frozen at {campaign.audienceCount} leads. Dispatching will queue the emails for delivery.</p>
                       <div>
-                        <Button variant="primary" size="lg" onClick={handleDispatchEmail} disabled={isDispatching}>
+                        <Button variant="primary" size="lg" onClick={() => setShowDispatchConfirm(true)} disabled={isDispatching}>
                           {isDispatching ? (
                             <>
                               <Spinner animation="border" size="sm" className="me-2" />
@@ -1249,6 +1399,7 @@ The Acme Team</p>`
                             <th>Sent</th>
                             <th>Failed</th>
                             <th>Started At</th>
+                            <th className="text-end">Details</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1264,9 +1415,30 @@ The Acme Team</p>`
                               <td className="align-middle text-primary fw-bold">{job.sent}</td>
                               <td className="align-middle text-danger">{job.failed}</td>
                               <td className="align-middle">{new Date(job.createdAt).toLocaleString()}</td>
+                              <td className="align-middle text-end">
+                                <Button
+                                  variant="outline-primary"
+                                  size="sm"
+                                  className="rounded-pill px-2"
+                                  onClick={async () => {
+                                    setLoadingDispatchDetail(true);
+                                    setShowDispatchDetailModal(true);
+                                    try {
+                                      const res = await api.get(`/email/dispatches/${job.id}`);
+                                      setSelectedDispatch(res.data.data);
+                                    } catch (e) {
+                                      setSelectedDispatch({ error: 'Failed to load details.' });
+                                    } finally {
+                                      setLoadingDispatchDetail(false);
+                                    }
+                                  }}
+                                >
+                                  <i className="bi bi-info-circle me-1"></i>View
+                                </Button>
+                              </td>
                             </tr>
                           )) : (
-                            <tr><td colSpan="6" className="text-center text-muted py-4">No dispatch jobs found.</td></tr>
+                            <tr><td colSpan="7" className="text-center text-muted py-4">No dispatch jobs found.</td></tr>
                           )}
                         </tbody>
                       </Table>
@@ -1363,6 +1535,101 @@ The Acme Team</p>`
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* DISPATCH EMAIL CONFIRM */}
+      <ConfirmDialog
+        show={showDispatchConfirm}
+        title="Dispatch Email Campaign"
+        message={`Dispatch this email campaign now? This will queue emails to all ${campaign.audienceCount} leads in the frozen audience.`}
+        confirmText="Yes, Dispatch"
+        variant="primary"
+        isProcessing={isDispatching}
+        onConfirm={handleDispatchEmail}
+        onCancel={() => setShowDispatchConfirm(false)}
+      />
+
+      {/* APPROVE CAMPAIGN CONFIRM */}
+      <ConfirmDialog
+        show={showApproveConfirm}
+        title="Approve Campaign"
+        message="Are you sure you want to approve this campaign? This will freeze the audience and cannot be undone."
+        confirmText="Yes, Approve"
+        variant="success"
+        onConfirm={handleApprove}
+        onCancel={() => setShowApproveConfirm(false)}
+      />
+
+      {/* UNASSIGN EXECUTIVE CONFIRM */}
+      <ConfirmDialog
+        show={!!unassignTargetId}
+        title="Unassign Executive"
+        message="Unassign this executive? Their pending leads will be returned to the pool."
+        confirmText="Yes, Unassign"
+        variant="warning"
+        onConfirm={() => unassignExecutive(unassignTargetId)}
+        onCancel={() => setUnassignTargetId(null)}
+      />
+
+      {/* REASSIGN LEADS CONFIRM */}
+      <ConfirmDialog
+        show={showReassignConfirm}
+        title="Reassign Leads"
+        message={`Reassign ${selectedStrandedLeads.length} stranded lead${selectedStrandedLeads.length !== 1 ? 's' : ''} to the selected executive?`}
+        confirmText="Yes, Reassign"
+        variant="primary"
+        onConfirm={doReassignLeads}
+        onCancel={() => setShowReassignConfirm(false)}
+      />
+
+      {/* DISPATCH JOB DETAIL MODAL */}
+      <Modal show={showDispatchDetailModal} onHide={() => { setShowDispatchDetailModal(false); setSelectedDispatch(null); }} centered size="lg">
+        <Modal.Header closeButton className="border-0 pb-0">
+          <Modal.Title className="fw-bold"><i className="bi bi-info-circle text-primary me-2"></i>Dispatch Job Details</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="py-3">
+          {loadingDispatchDetail ? (
+            <div className="text-center py-4"><Spinner animation="border" variant="primary" /></div>
+          ) : selectedDispatch?.error ? (
+            <AlertMessage message={selectedDispatch.error} />
+          ) : selectedDispatch ? (
+            <dl className="row mb-0">
+              <dt className="col-sm-4 text-muted fw-medium mb-3">Job ID</dt>
+              <dd className="col-sm-8 mb-3"><code>{selectedDispatch.id}</code></dd>
+              <dt className="col-sm-4 text-muted fw-medium mb-3">Status</dt>
+              <dd className="col-sm-8 mb-3">
+                <Badge bg={selectedDispatch.status === 'completed' ? 'success' : selectedDispatch.status === 'failed' ? 'danger' : 'warning text-dark'}>{selectedDispatch.status}</Badge>
+              </dd>
+              <dt className="col-sm-4 text-muted fw-medium mb-3">Processed</dt>
+              <dd className="col-sm-8 mb-3">{selectedDispatch.processed ?? '—'}</dd>
+              <dt className="col-sm-4 text-muted fw-medium mb-3">Sent</dt>
+              <dd className="col-sm-8 mb-3 text-primary fw-bold">{selectedDispatch.sent ?? '—'}</dd>
+              <dt className="col-sm-4 text-muted fw-medium mb-3">Failed</dt>
+              <dd className="col-sm-8 mb-3 text-danger fw-bold">{selectedDispatch.failed ?? '—'}</dd>
+              <dt className="col-sm-4 text-muted fw-medium mb-3">Started At</dt>
+              <dd className="col-sm-8 mb-3">{(selectedDispatch.startedAt || selectedDispatch.createdAt) ? new Date(selectedDispatch.startedAt || selectedDispatch.createdAt).toLocaleString() : '—'}</dd>
+              <dt className="col-sm-4 text-muted fw-medium mb-3">Completed At</dt>
+              <dd className="col-sm-8 mb-3">{(selectedDispatch.finishedAt || selectedDispatch.completedAt) ? new Date(selectedDispatch.finishedAt || selectedDispatch.completedAt).toLocaleString() : '—'}</dd>
+              {selectedDispatch.failureReason && (
+                <>
+                  <dt className="col-sm-4 text-muted fw-medium mb-0">Failure Reason</dt>
+                  <dd className="col-sm-8 mb-0 text-danger">{selectedDispatch.failureReason}</dd>
+                </>
+              )}
+            </dl>
+          ) : null}
+        </Modal.Body>
+        <Modal.Footer className="border-0 pt-0">
+          <Button variant="secondary" className="rounded-pill px-4" onClick={() => { setShowDispatchDetailModal(false); setSelectedDispatch(null); }}>Close</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* TOAST NOTIFICATION */}
+      <ToastNotification
+        show={toast.show}
+        onClose={() => setToast(t => ({ ...t, show: false }))}
+        message={toast.message}
+        variant={toast.variant}
+      />
     </AppLayout>
   );
 }

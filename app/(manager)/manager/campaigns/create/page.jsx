@@ -157,6 +157,7 @@ function CampaignWizardForm() {
       router.push(`/manager/campaigns/${res.data.data.id}`);
     } catch (err) {
       setFormError(getApiErrorMessage(err, "Failed to create campaign."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
       setIsSubmitting(false);
     }
   };

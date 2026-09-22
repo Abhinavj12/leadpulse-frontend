@@ -13,6 +13,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
+import { ToastNotification } from "@/components/ui/ToastNotification";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
@@ -23,6 +24,7 @@ export default function ClientCampaignsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [downloadingId, setDownloadingId] = useState(null);
+  const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
 
   useEffect(() => {
     let mounted = true;
@@ -59,7 +61,7 @@ export default function ClientCampaignsPage() {
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
     } catch (e) {
-      alert(`Failed to download ${format.toUpperCase()} report.`);
+      setToast({ show: true, message: `Failed to download ${format.toUpperCase()} report.`, variant: "danger" });
     } finally {
       setDownloadingId(null);
     }
@@ -209,6 +211,7 @@ export default function ClientCampaignsPage() {
           </Table>
         </Card.Body>
       </Card>
+      <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>
   );
 }

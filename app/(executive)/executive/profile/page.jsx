@@ -73,6 +73,7 @@ export default function ExecutiveProfilePage() {
         ...(firstName ? {} : { firstName: "First name is required." }),
         ...(lastName ? {} : { lastName: "Last name is required." })
       });
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -82,11 +83,13 @@ export default function ExecutiveProfilePage() {
       await refreshSession();
       setProfileVariant("success");
       setProfileMessage("Profile updated successfully.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       setTimeout(() => setProfileMessage(""), 3000);
     } catch (error) {
       setProfileErrors(getFieldErrors(error));
       setProfileVariant("danger");
       setProfileMessage(getApiErrorMessage(error, "Failed to update profile."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setProfileSubmitting(false);
     }
@@ -110,6 +113,7 @@ export default function ExecutiveProfilePage() {
     }
     if (Object.keys(fieldErrors).length > 0) {
       setPasswordErrors(fieldErrors);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -121,6 +125,7 @@ export default function ExecutiveProfilePage() {
       setPasswordVariant("success");
       setPasswordMessage("Password changed. Signing you out for security...");
       setSigningOut(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       setTimeout(async () => {
         await logout();
         window.location.href = "/login";
@@ -129,6 +134,7 @@ export default function ExecutiveProfilePage() {
       setPasswordErrors(getFieldErrors(error));
       setPasswordVariant("danger");
       setPasswordMessage(getApiErrorMessage(error, "Failed to change password."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setPasswordSubmitting(false);
     }

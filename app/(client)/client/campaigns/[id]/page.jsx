@@ -13,6 +13,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
+import { ToastNotification } from "@/components/ui/ToastNotification";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
@@ -24,6 +25,7 @@ export default function ClientCampaignDetailPage({ params }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
 
   useEffect(() => {
     let mounted = true;
@@ -61,7 +63,7 @@ export default function ClientCampaignDetailPage({ params }) {
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
     } catch (e) {
-      alert(`Failed to download ${format.toUpperCase()} report.`);
+      setToast({ show: true, message: `Failed to download ${format.toUpperCase()} report.`, variant: "danger" });
     } finally {
       setDownloading(false);
     }
@@ -279,6 +281,7 @@ export default function ClientCampaignDetailPage({ params }) {
           </Card.Body>
         </Card>
       )}
+      <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>
   );
 }
