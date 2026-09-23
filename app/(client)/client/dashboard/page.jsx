@@ -70,8 +70,11 @@ export default function ClientDashboard() {
           <Card className="h-100 border-0 shadow-sm rounded-3">
             <Card.Body className="p-3 p-xl-4 text-center">
               <div className="text-muted small text-uppercase fw-bold mb-1">Qualified Leads</div>
-              <div className="display-6 fw-bold text-info">{totals.qualifiedLeads || 0}</div>
-              <div className="text-muted small mt-2">Identities unlocked</div>
+              <div className="display-6 fw-bold text-info">{totals.qualifiedLeads?.overall || 0}</div>
+              <div className="text-muted small mt-2 d-flex align-items-center justify-content-center gap-2">
+                <span>Total Reach</span>
+                <Badge bg="info" text="dark" className="rounded-pill px-2">{totals.qualifiedLeads?.unique || 0} Unique</Badge>
+              </div>
             </Card.Body>
           </Card>
         </Col>
@@ -80,8 +83,11 @@ export default function ClientDashboard() {
           <Card className="h-100 border-0 shadow-sm rounded-3 bg-success text-white">
             <Card.Body className="p-3 p-xl-4 text-center">
               <div className="small text-uppercase fw-bold mb-1 opacity-75">Secured Conversions</div>
-              <div className="display-6 fw-bold">{totals.convertedLeads || 0}</div>
-              <div className="small mt-2 opacity-75">Confirmed conversion events</div>
+              <div className="display-6 fw-bold">{totals.convertedLeads?.overall || 0}</div>
+              <div className="small mt-2 d-flex align-items-center justify-content-center gap-2">
+                <span className="opacity-75">Events</span>
+                <Badge bg="light" text="success" className="rounded-pill px-2">{totals.convertedLeads?.unique || 0} Unique</Badge>
+              </div>
             </Card.Body>
           </Card>
         </Col>
@@ -103,12 +109,9 @@ export default function ClientDashboard() {
       <Row className="mb-4 g-4">
         <Col md={6}>
           <Card className="h-100 border-0 shadow-sm rounded-3">
-            <Card.Header className="bg-white border-0 pt-4 px-4 pb-0 fw-bold d-flex align-items-center justify-content-between">
-              <div>
-                <i className="bi bi-envelope-paper text-primary me-2 fs-5"></i>
-                Emailing Activity
-              </div>
-              <Badge bg="primary" pill>{totals.emailCampaigns || 0} Campaigns</Badge>
+            <Card.Header className="bg-white border-0 pt-4 px-4 pb-0 fw-bold d-flex align-items-center">
+              <i className="bi bi-envelope-paper text-primary me-2 fs-5"></i>
+              Emailing Activity
             </Card.Header>
             <Card.Body className="p-4">
               <Row className="align-items-center text-center">
@@ -122,7 +125,7 @@ export default function ClientDashboard() {
                 </Col>
               </Row>
               <div className="mt-4 pt-3 border-top text-center">
-                <Link href="/client/campaigns">
+                <Link href="/client/campaigns?type=email">
                   <Button variant="outline-primary" size="sm" className="rounded-pill px-3">
                     View Email Campaigns <i className="bi bi-arrow-right ms-1"></i>
                   </Button>
@@ -134,12 +137,9 @@ export default function ClientDashboard() {
 
         <Col md={6}>
           <Card className="h-100 border-0 shadow-sm rounded-3">
-            <Card.Header className="bg-white border-0 pt-4 px-4 pb-0 fw-bold d-flex align-items-center justify-content-between">
-              <div>
-                <i className="bi bi-telephone-outbound text-success me-2 fs-5"></i>
-                Calling Activity
-              </div>
-              <Badge bg="success" pill>{totals.callCampaigns || 0} Campaigns</Badge>
+            <Card.Header className="bg-white border-0 pt-4 px-4 pb-0 fw-bold d-flex align-items-center">
+              <i className="bi bi-telephone-outbound text-success me-2 fs-5"></i>
+              Calling Activity
             </Card.Header>
             <Card.Body className="p-4">
               <Row className="align-items-center text-center">
@@ -153,7 +153,7 @@ export default function ClientDashboard() {
                 </Col>
               </Row>
               <div className="mt-4 pt-3 border-top text-center">
-                <Link href="/client/campaigns">
+                <Link href="/client/campaigns?type=call">
                   <Button variant="outline-success" size="sm" className="rounded-pill px-3">
                     View Call Campaigns <i className="bi bi-arrow-right ms-1"></i>
                   </Button>
@@ -183,21 +183,37 @@ export default function ClientDashboard() {
               <tbody>
                 {monthlyVolume.map((item, idx) => {
                   const maxVal = Math.max(...monthlyVolume.map(v => v.leadsTargeted), 1);
-                  const pct = Math.round((item.leadsTargeted / maxVal) * 100);
+                  const overallPct = Math.max(Math.round((item.leadsTargeted / maxVal) * 100), 5); // Ensure some width
+                  
+                  const emailPct = Math.round(((item.emailVolume || 0) / (item.leadsTargeted || 1)) * 100);
+                  const callPct = 100 - emailPct;
+
                   return (
                     <tr key={idx}>
                       <td className="fw-medium text-dark">{item.month}</td>
                       <td className="text-center fw-bold">{item.leadsTargeted}</td>
                       <td style={{ width: '50%' }}>
-                        <div className="progress" style={{ height: '10px' }}>
-                          <div 
-                            className="progress-bar bg-primary" 
-                            role="progressbar" 
-                            style={{ width: `${pct}%` }}
-                            aria-valuenow={pct} 
-                            aria-valuemin="0" 
-                            aria-valuemax="100"
-                          ></div>
+                        <div className="progress" style={{ height: '12px', width: `${overallPct}%`, minWidth: '80px' }}>
+                          {(item.emailVolume > 0 || item.callVolume === 0) && (
+                            <div 
+                              className="progress-bar bg-primary" 
+                              role="progressbar" 
+                              style={{ width: `${emailPct}%` }}
+                              title={`${item.emailVolume} Email Targets`}
+                            ></div>
+                          )}
+                          {item.callVolume > 0 && (
+                            <div 
+                              className="progress-bar bg-success" 
+                              role="progressbar" 
+                              style={{ width: `${callPct}%` }}
+                              title={`${item.callVolume} Call Targets`}
+                            ></div>
+                          )}
+                        </div>
+                        <div className="d-flex mt-1" style={{ fontSize: '0.7rem', width: `${overallPct}%`, minWidth: '80px', justifyContent: 'space-between' }}>
+                          {item.emailVolume > 0 && <span className="text-primary fw-medium">{item.emailVolume} Email</span>}
+                          {item.callVolume > 0 && <span className="text-success fw-medium">{item.callVolume} Call</span>}
                         </div>
                       </td>
                     </tr>

@@ -281,6 +281,51 @@ export default function ClientCampaignDetailPage({ params }) {
           </Card.Body>
         </Card>
       )}
+
+      {/* BILLING & COMMERCIALS SECTION */}
+      {report?.billing && report.billing.pricingModel && (
+        <Card className="border-0 shadow-sm rounded-3 mb-4">
+          <Card.Header className="bg-white border-0 pt-4 px-4 pb-2 fw-bold d-flex justify-content-between align-items-center">
+            <div>
+              <i className="bi bi-receipt text-success me-2"></i> Billing & Commercials
+            </div>
+            <Badge bg={report.billing.pricingModel === 'cost_per_lead' ? 'primary' : 'success'} className="text-uppercase">
+              {report.billing.pricingModel.replace('_', ' ')}
+            </Badge>
+          </Card.Header>
+          <Card.Body className="p-4 pt-0">
+            <Row className="g-4 mt-1">
+              <Col md={6}>
+                <div className="p-4 border rounded-3 bg-light h-100 d-flex flex-column justify-content-center">
+                  <div className="text-muted small text-uppercase fw-bold mb-1">Contract Rate / Retainer</div>
+                  <div className="display-6 fw-bold text-dark">
+                    {report.billing.pricingModel === 'cost_per_lead' ? `$${report.billing.ratePerLead || 0}` :
+                     report.billing.pricingModel === 'flat_retainer' ? `$${report.billing.retainerAmount || 0}` : 'N/A'}
+                  </div>
+                  <div className="text-muted small mt-1">
+                    {report.billing.pricingModel === 'cost_per_lead' ? "Per confirmed conversion" : "Fixed retainer amount"}
+                  </div>
+                </div>
+              </Col>
+              <Col md={6}>
+                <div className="p-4 border rounded-3 bg-success bg-opacity-10 border-success border-opacity-25 h-100 d-flex flex-column justify-content-center">
+                  <div className="text-success small text-uppercase fw-bold mb-1">Accrued Billing</div>
+                  <div className="display-6 fw-bold text-success">
+                    ${report.billing.pricingModel === 'cost_per_lead' ? (report.billing.amountAccrued || 0).toFixed(2) :
+                      report.billing.pricingModel === 'flat_retainer' ? (report.billing.retainerAmount || 0).toFixed(2) : '0.00'}
+                  </div>
+                  <div className="text-success small mt-1 opacity-75">
+                    {report.billing.pricingModel === 'cost_per_lead' ? 
+                      `Based on ${report.billing.billableConversions ?? report.billing.confirmedConversions ?? 0} billable conversion(s)` : 
+                      "Fixed amount billed per agreement"}
+                  </div>
+                </div>
+              </Col>
+            </Row>
+          </Card.Body>
+        </Card>
+      )}
+
       <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>
   );

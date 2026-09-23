@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Card from "react-bootstrap/Card";
-import Table from "react-bootstrap/Table";
 import Badge from "react-bootstrap/Badge";
 import Button from "react-bootstrap/Button";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
+import Form from "react-bootstrap/Form";
+import InputGroup from "react-bootstrap/InputGroup";
 
 import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
@@ -16,11 +17,15 @@ import AlertMessage from "@/components/ui/AlertMessage";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 import { ToastNotification } from "@/components/ui/ToastNotification";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 export default function ClientSequencesPage() {
   const [sequences, setSequences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(6);
   const [downloadingId, setDownloadingId] = useState(null);
   const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
 
@@ -42,6 +47,11 @@ export default function ClientSequencesPage() {
     fetchSequences();
     return () => { mounted = false; };
   }, []);
+
+  // Reset page when search or page size changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, pageSize]);
 
   const downloadSequenceReport = async (seqId, seqName, format) => {
     try {
@@ -65,6 +75,21 @@ export default function ClientSequencesPage() {
     }
   };
 
+  const filteredSequences = sequences.filter(s => {
+    if (!search) return true;
+    const term = search.toLowerCase();
+    return s.name?.toLowerCase().includes(term) || s.description?.toLowerCase().includes(term);
+  });
+
+  // KPI Calculations
+  const totalUniqueProspects = sequences.reduce((acc, curr) => acc + (curr.totals?.uniqueLeadsReached || 0), 0);
+  const totalConversions = sequences.reduce((acc, curr) => acc + (curr.totals?.convertedLeads ?? curr.totals?.conversions ?? 0), 0);
+
+  // Pagination calculation
+  const totalItems = filteredSequences.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const paginatedSequences = filteredSequences.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   if (loading) return <AppLayout role="client"><LoadingSpinner /></AppLayout>;
   if (error) return <AppLayout role="client"><AlertMessage message={error} /></AppLayout>;
 
@@ -75,8 +100,72 @@ export default function ClientSequencesPage() {
         subtitle="Contracted multi-step campaigns combining email touches and call follow-ups." 
       />
 
+      {/* KPI SUMMARY CARDS */}
+      <Row className="mb-4 g-3">
+        <Col md={4} sm={6}>
+          <Card className="border-0 shadow-sm rounded-3">
+            <Card.Body className="p-3 d-flex align-items-center justify-content-between">
+              <div>
+                <div className="text-muted small fw-semibold text-uppercase">Active Motions</div>
+                <div className="fs-4 fw-bold text-dark">{sequences.length}</div>
+              </div>
+              <div className="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
+                <i className="bi bi-diagram-3 fs-4"></i>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col md={4} sm={6}>
+          <Card className="border-0 shadow-sm rounded-3">
+            <Card.Body className="p-3 d-flex align-items-center justify-content-between">
+              <div>
+                <div className="text-muted small fw-semibold text-uppercase">Unique Reached</div>
+                <div className="fs-4 fw-bold text-primary">{totalUniqueProspects}</div>
+              </div>
+              <div className="bg-info bg-opacity-10 text-info p-2 rounded-circle">
+                <i className="bi bi-person-check fs-4"></i>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col md={4} sm={12}>
+          <Card className="border-0 shadow-sm rounded-3">
+            <Card.Body className="p-3 d-flex align-items-center justify-content-between">
+              <div>
+                <div className="text-muted small fw-semibold text-uppercase">Total Conversions</div>
+                <div className="fs-4 fw-bold text-success">{totalConversions}</div>
+              </div>
+              <div className="bg-success bg-opacity-10 text-success p-2 rounded-circle">
+                <i className="bi bi-trophy fs-4"></i>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* SEARCH BAR */}
+      <Card className="border-0 shadow-sm rounded-3 mb-4">
+        <Card.Body className="p-3">
+          <InputGroup style={{ maxWidth: "360px" }}>
+            <InputGroup.Text className="bg-white border-end-0">
+              <i className="bi bi-search text-muted"></i>
+            </InputGroup.Text>
+            <Form.Control
+              type="text"
+              placeholder="Search motions by title..."
+              className="border-start-0"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </InputGroup>
+        </Card.Body>
+      </Card>
+
+      {/* SEQUENCES CARDS GRID */}
       <Row className="g-4 mb-4">
-        {sequences.map((seq, idx) => {
+        {paginatedSequences.map((seq, idx) => {
           const billing = seq.billing || {};
           const isCostPerLead = billing.pricingModel === 'cost_per_lead';
           const isFlatRetainer = billing.pricingModel === 'flat_retainer';
@@ -167,7 +256,7 @@ export default function ClientSequencesPage() {
           );
         })}
 
-        {sequences.length === 0 && (
+        {filteredSequences.length === 0 && (
           <Col md={12}>
             <Card className="border-0 shadow-sm rounded-3">
               <Card.Body className="p-5 text-center text-muted">
@@ -180,7 +269,22 @@ export default function ClientSequencesPage() {
         )}
       </Row>
 
+      {/* GRID PAGINATION CONTROL */}
+      <Card className="border-0 shadow-sm rounded-3">
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          pageSize={pageSize}
+          pageSizeOptions={[6, 12, 24]}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemName="outreach motions"
+        />
+      </Card>
+
       <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>
   );
 }
+

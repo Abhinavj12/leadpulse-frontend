@@ -4,35 +4,66 @@ import { useEffect, useState } from "react";
 import Card from "react-bootstrap/Card";
 import Table from "react-bootstrap/Table";
 import Badge from "react-bootstrap/Badge";
-import Button from "react-bootstrap/Button";
 import Form from "react-bootstrap/Form";
 import InputGroup from "react-bootstrap/InputGroup";
 import Nav from "react-bootstrap/Nav";
+import Row from "react-bootstrap/Row";
+import Col from "react-bootstrap/Col";
+import ProgressBar from "react-bootstrap/ProgressBar";
 
 import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
 export default function ClientLeadsCRM() {
+  const [activeTab, setActiveTab] = useState("Insights"); // "Insights", "Qualified", "Converted"
+
+  // States for Stats
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsData, setStatsData] = useState({ industryStats: [], totalTargeted: 0 });
+  const [statsError, setStatsError] = useState("");
+
+  // States for Leads
   const [leads, setLeads] = useState([]);
+  const [pageSize, setPageSize] = useState(25);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0, totalPages: 1 });
-  const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const fetchLeads = async (page = 1, status = statusFilter) => {
+  useEffect(() => {
+    if (activeTab === "Insights") {
+      fetchStats();
+    } else {
+      fetchLeads(1, pageSize, activeTab);
+    }
+  }, [activeTab, pageSize]);
+
+  const fetchStats = async () => {
+    try {
+      setStatsLoading(true);
+      const res = await api.get('/portal/leads/stats');
+      setStatsData(res.data.data || { industryStats: [], totalTargeted: 0 });
+      setStatsError("");
+    } catch (err) {
+      setStatsError(getApiErrorMessage(err, "Failed to load audience insights."));
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const fetchLeads = async (page = 1, currentSize = pageSize, status) => {
     try {
       setLoading(true);
-      let url = `/portal/leads?page=${page}&pageSize=25`;
-      if (status && status !== "all") url += `&status=${status}`;
+      let url = `/portal/leads?page=${page}&pageSize=${currentSize}&status=${status}`;
 
       const res = await api.get(url);
       setLeads(res.data.data?.leads || []);
-      setPagination(res.data.data?.pagination || { page: 1, pageSize: 25, total: 0, totalPages: 1 });
+      setPagination(res.data.data?.pagination || { page: 1, pageSize: currentSize, total: 0, totalPages: 1 });
       setError("");
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to load leads."));
@@ -41,14 +72,12 @@ export default function ClientLeadsCRM() {
     }
   };
 
-  useEffect(() => {
-    fetchLeads(1, statusFilter);
-  }, [statusFilter]);
-
   const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= pagination.totalPages) {
-      fetchLeads(newPage, statusFilter);
-    }
+    fetchLeads(newPage, pageSize, activeTab);
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(newSize);
   };
 
   const filteredLeads = leads.filter(l => {
@@ -64,41 +93,31 @@ export default function ClientLeadsCRM() {
   return (
     <AppLayout role="client">
       <PageHeader 
-        title="Funnel Leads CRM" 
-        subtitle="Real-time prospect funnel tracking. Identities are automatically unlocked upon Qualification." 
+        title="Prospects & Conversions" 
+        subtitle="Audience insights and unlocked qualified leads." 
       />
 
-      {/* REDACTION BOUNDARY NOTICE */}
-      <AlertMessage 
-        variant="info" 
-        message="Privacy & Quality Assurance Guard: Basic target profiles (Company, Title, Industry) are visible for all targeted prospects. Direct contact identities (Name, Email, Phone) are unlocked as soon as an executive qualifies or converts a lead." 
-      />
-
-      {/* FILTER & SEARCH CARD */}
       <Card className="border-0 shadow-sm rounded-3 mb-4">
-        <Card.Body className="p-3">
-          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
-            <Nav variant="pills" activeKey={statusFilter} onSelect={(selectedKey) => setStatusFilter(selectedKey)}>
-              <Nav.Item>
-                <Nav.Link eventKey="all" className="rounded-pill px-3 py-1">All Statuses</Nav.Link>
-              </Nav.Item>
-              <Nav.Item>
-                <Nav.Link eventKey="New" className="rounded-pill px-3 py-1">New</Nav.Link>
-              </Nav.Item>
-              <Nav.Item>
-                <Nav.Link eventKey="Contacted" className="rounded-pill px-3 py-1">Contacted</Nav.Link>
-              </Nav.Item>
-              <Nav.Item>
-                <Nav.Link eventKey="Qualified" className="rounded-pill px-3 py-1 fw-bold text-primary">Qualified</Nav.Link>
-              </Nav.Item>
-              <Nav.Item>
-                <Nav.Link eventKey="Converted" className="rounded-pill px-3 py-1 fw-bold text-success">Converted</Nav.Link>
-              </Nav.Item>
-              <Nav.Item>
-                <Nav.Link eventKey="Dead" className="rounded-pill px-3 py-1 text-secondary">Dead</Nav.Link>
-              </Nav.Item>
-            </Nav>
-
+        <Card.Body className="p-3 d-flex justify-content-between align-items-center">
+          <Nav variant="pills" activeKey={activeTab} onSelect={(selectedKey) => setActiveTab(selectedKey)}>
+            <Nav.Item>
+              <Nav.Link eventKey="Insights" className="rounded-pill px-4 py-2 fw-bold">
+                <i className="bi bi-pie-chart-fill me-2"></i>Target Audience Insights
+              </Nav.Link>
+            </Nav.Item>
+            <Nav.Item>
+              <Nav.Link eventKey="Qualified" className={`rounded-pill px-4 py-2 fw-bold ${activeTab === 'Qualified' ? 'text-white' : 'text-primary'}`}>
+                <i className="bi bi-person-check-fill me-2"></i>Qualified Leads
+              </Nav.Link>
+            </Nav.Item>
+            <Nav.Item>
+              <Nav.Link eventKey="Converted" className={`rounded-pill px-4 py-2 fw-bold ${activeTab === 'Converted' ? 'text-white' : 'text-success'}`}>
+                <i className="bi bi-trophy-fill me-2"></i>Converted Leads
+              </Nav.Link>
+            </Nav.Item>
+          </Nav>
+          
+          {activeTab !== "Insights" && (
             <InputGroup style={{ maxWidth: "300px" }}>
               <InputGroup.Text className="bg-white border-end-0">
                 <i className="bi bi-search text-muted"></i>
@@ -111,118 +130,165 @@ export default function ClientLeadsCRM() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </InputGroup>
-          </div>
+          )}
         </Card.Body>
       </Card>
 
-      {/* LEADS TABLE */}
-      {loading ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <AlertMessage message={error} />
-      ) : (
-        <Card className="border-0 shadow-sm rounded-3">
-          <Card.Body className="p-0">
-            <Table responsive hover className="mb-0 align-middle">
-              <thead className="bg-light">
-                <tr>
-                  <th>Status</th>
-                  <th>Target Profile (Title & Company)</th>
-                  <th>Prospect Name</th>
-                  <th>Contact Info</th>
-                  <th>Lead List</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLeads.length > 0 ? (
-                  filteredLeads.map((lead, idx) => {
-                    const isRevealed = lead.status === 'Qualified' || lead.status === 'Converted';
+      {/* TAB: INSIGHTS */}
+      {activeTab === "Insights" && (
+        <>
+          {statsLoading ? (
+            <LoadingSpinner />
+          ) : statsError ? (
+            <AlertMessage message={statsError} />
+          ) : (
+            <Row className="g-4">
+              <Col xs={12}>
+                <Card className="border-0 shadow-sm rounded-3">
+                  <Card.Header className="bg-white border-0 pt-4 px-4 pb-0 fw-bold">
+                    <h5 className="mb-0 text-dark tracking-tight">Industries Targeted Overview</h5>
+                    <p className="text-muted small fw-normal mt-1">
+                      A breakdown of your overall prospect audience by industry sector. Your total targeted audience spans <strong className="text-dark">{statsData.totalTargeted}</strong> leads.
+                    </p>
+                  </Card.Header>
+                  <Card.Body className="p-4">
+                    {statsData.industryStats && statsData.industryStats.length > 0 ? (
+                      <Row className="g-4">
+                        {statsData.industryStats.map((stat, idx) => (
+                          <Col xs={12} md={6} lg={4} key={idx}>
+                            <Card className="border shadow-none h-100 rounded-3 bg-light">
+                              <Card.Body className="p-4">
+                                <h6 className="fw-bolder text-dark mb-3 text-truncate" title={stat.industry}>
+                                  {stat.industry}
+                                </h6>
+                                <div className="mb-3">
+                                  <div className="d-flex justify-content-between mb-1 small">
+                                    <span className="text-muted fw-medium">Audience Pool</span>
+                                    <span className="fw-bold">{stat.targeted} Prospects</span>
+                                  </div>
+                                  <ProgressBar 
+                                    now={100} 
+                                    variant="secondary" 
+                                    className="opacity-25"
+                                    style={{ height: '6px' }} 
+                                  />
+                                </div>
+                                <div className="d-flex gap-3 mt-4 pt-3 border-top border-secondary-subtle">
+                                  <div className="flex-fill">
+                                    <div className="text-primary fs-4 fw-bolder tracking-tight">{stat.qualified}</div>
+                                    <div className="text-muted text-uppercase fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px' }}>Qualified</div>
+                                  </div>
+                                  <div className="flex-fill border-start border-secondary-subtle ps-3">
+                                    <div className="text-success fs-4 fw-bolder tracking-tight">{stat.converted}</div>
+                                    <div className="text-muted text-uppercase fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px' }}>Converted</div>
+                                  </div>
+                                </div>
+                              </Card.Body>
+                            </Card>
+                          </Col>
+                        ))}
+                      </Row>
+                    ) : (
+                      <div className="text-center py-5 text-muted">
+                        <i className="bi bi-bar-chart fs-1 opacity-25 d-block mb-3"></i>
+                        No industry statistics available yet.
+                      </div>
+                    )}
+                  </Card.Body>
+                </Card>
+              </Col>
+            </Row>
+          )}
+        </>
+      )}
 
-                    return (
-                      <tr key={lead.membershipId || `${lead.id}-${idx}`}>
-                        <td>
-                          <Badge bg={
-                            lead.status === 'Converted' ? 'success' :
-                            lead.status === 'Qualified' ? 'primary' :
-                            lead.status === 'Dead' ? 'secondary' :
-                            lead.status === 'Contacted' ? 'warning text-dark' : 'info text-dark'
-                          } className="text-uppercase px-2 py-1">
-                            {lead.status || 'New'}
-                          </Badge>
-                        </td>
-                        <td>
-                          <div className="fw-bold text-dark">{lead.jobTitle || 'Decision Maker'}</div>
-                          <div className="text-muted small">
-                            at <span className="fw-medium">{lead.company || 'Target Organization'}</span> ({lead.industry || 'Industry N/A'})
-                          </div>
-                        </td>
-                        <td>
-                          {isRevealed ? (
-                            <span className="fw-bold text-success d-flex align-items-center">
-                              <i className="bi bi-unlock-fill me-1"></i>
+      {/* TAB: LEADS TABLE (QUALIFIED / CONVERTED) */}
+      {activeTab !== "Insights" && (
+        <>
+          {loading ? (
+            <LoadingSpinner />
+          ) : error ? (
+            <AlertMessage message={error} />
+          ) : (
+            <Card className="border-0 shadow-sm rounded-3">
+              <Card.Body className="p-0">
+                <Table responsive hover className="mb-0 align-middle">
+                  <thead className="bg-light">
+                    <tr>
+                      <th className="px-4 py-3 border-bottom-0">Status</th>
+                      <th className="px-4 py-3 border-bottom-0">Prospect Identity</th>
+                      <th className="px-4 py-3 border-bottom-0">Professional Info</th>
+                      <th className="px-4 py-3 border-bottom-0">Contact Details</th>
+                      <th className="px-4 py-3 border-bottom-0">Source List</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLeads.length > 0 ? (
+                      filteredLeads.map((lead, idx) => (
+                        <tr key={lead.membershipId || `${lead.id}-${idx}`}>
+                          <td className="px-4 py-3">
+                            <Badge bg={lead.status === 'Converted' ? 'success' : 'primary'} className="text-uppercase px-3 py-2 rounded-pill tracking-wide" style={{ fontSize: '0.7rem' }}>
+                              {lead.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="fw-bolder text-dark fs-6 d-flex align-items-center">
+                              <i className="bi bi-unlock-fill text-success me-2 fs-6"></i>
                               {lead.firstName} {lead.lastName}
-                            </span>
-                          ) : (
-                            <span className="text-muted fst-italic d-flex align-items-center">
-                              <i className="bi bi-lock-fill me-1 text-secondary"></i>
-                              Redacted
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          {isRevealed ? (
-                            <div className="small">
-                              <div className="text-dark"><i className="bi bi-envelope me-1 text-muted"></i>{lead.email}</div>
-                              {lead.phone && <div className="text-muted"><i className="bi bi-telephone me-1 text-muted"></i>{lead.phone}</div>}
                             </div>
-                          ) : (
-                            <span className="text-muted small fst-italic">Unlocked on Qualification</span>
-                          )}
-                        </td>
-                        <td className="text-muted small">
-                          {lead.listName || 'Campaign Audience'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="fw-bold text-dark">{lead.jobTitle || 'Decision Maker'}</div>
+                            <div className="text-muted small">
+                              <i className="bi bi-building me-1 opacity-50"></i>
+                              <span className="fw-medium">{lead.company || 'Target Organization'}</span> 
+                              <span className="opacity-75 ms-1">({lead.industry || 'Industry N/A'})</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="small">
+                              <div className="text-dark mb-1">
+                                <i className="bi bi-envelope-fill me-2 text-primary opacity-75"></i>
+                                {lead.email}
+                              </div>
+                              {lead.phone && (
+                                <div className="text-dark">
+                                  <i className="bi bi-telephone-fill me-2 text-primary opacity-75"></i>
+                                  {lead.phone}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-secondary small fw-medium">
+                            <i className="bi bi-folder-fill me-2 opacity-50"></i>
+                            {lead.listName || 'Campaign Audience'}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="5" className="text-center text-muted py-5">
+                          <i className="bi bi-search fs-1 opacity-25 d-block mb-3"></i>
+                          No {activeTab.toLowerCase()} leads found.
                         </td>
                       </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan="5" className="text-center text-muted py-5">
-                      No leads found matching your selected filter.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
-          </Card.Body>
+                    )}
+                  </tbody>
+                </Table>
+              </Card.Body>
 
-          {/* PAGINATION FOOTER */}
-          {pagination.totalPages > 1 && (
-            <Card.Footer className="bg-white border-0 p-3 d-flex justify-content-between align-items-center">
-              <span className="text-muted small">
-                Showing Page <strong>{pagination.page}</strong> of <strong>{pagination.totalPages}</strong> ({pagination.total} Total Leads)
-              </span>
-              <div className="d-flex gap-2">
-                <Button 
-                  variant="outline-secondary" 
-                  size="sm" 
-                  disabled={pagination.page <= 1}
-                  onClick={() => handlePageChange(pagination.page - 1)}
-                >
-                  <i className="bi bi-chevron-left me-1"></i> Previous
-                </Button>
-                <Button 
-                  variant="outline-secondary" 
-                  size="sm" 
-                  disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => handlePageChange(pagination.page + 1)}
-                >
-                  Next <i className="bi bi-chevron-right ms-1"></i>
-                </Button>
-              </div>
-            </Card.Footer>
+              <PaginationControl
+                currentPage={pagination.page}
+                totalPages={pagination.totalPages}
+                totalItems={pagination.total}
+                pageSize={pageSize}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                itemName={`${activeTab.toLowerCase()} leads`}
+              />
+            </Card>
           )}
-        </Card>
+        </>
       )}
     </AppLayout>
   );

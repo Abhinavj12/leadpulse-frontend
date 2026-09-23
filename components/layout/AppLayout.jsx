@@ -32,7 +32,6 @@ const nav = {
     ["/client/sequences", "Cadences", "bi-diagram-3"],
     ["/client/leads", "Leads", "bi-person-lines-fill"],
     ["/client/reports", "Reports", "bi-file-earmark-bar-graph"],
-    ["/client/billing", "Billing", "bi-receipt"],
     ["/client/profile", "Profile", "bi-person"]
   ]
 };

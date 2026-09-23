@@ -16,6 +16,7 @@ import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage, getFieldErrors } from "@/lib/auth/auth";
 
@@ -28,6 +29,9 @@ export default function ClientUsersPage({ params }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [showModal, setShowModal] = useState(false);
   const [formErrors, setFormErrors] = useState({});
@@ -63,6 +67,10 @@ export default function ClientUsersPage({ params }) {
   useEffect(() => {
     loadData();
   }, [clientId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [pageSize]);
 
   const handleShow = () => {
     setFormData({ firstName: "", lastName: "", email: "", temporaryPassword: "" });
@@ -210,7 +218,7 @@ export default function ClientUsersPage({ params }) {
               </thead>
               <tbody>
                 {users.length > 0 ? (
-                  users.map((u) => (
+                  users.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((u) => (
                     <tr key={u.id}>
                       <td className="px-4 py-3">
                         <div className="d-flex align-items-center">
@@ -233,7 +241,11 @@ export default function ClientUsersPage({ params }) {
                           <Dropdown.Toggle variant="light" size="sm" className="rounded-circle shadow-sm border-0 px-2 text-secondary" style={{ width: '36px', height: '36px' }}>
                             <i className="bi bi-three-dots-vertical"></i>
                           </Dropdown.Toggle>
-                          <Dropdown.Menu className="border-0 shadow-sm rounded-3">
+                          <Dropdown.Menu 
+                            renderOnMount 
+                            popperConfig={{ strategy: 'fixed' }} 
+                            className="border-0 shadow-sm rounded-3"
+                          >
                             <Dropdown.Item onClick={() => openConfirmDialog(u, 'reset-password')} className="fw-medium text-dark py-2">
                               <i className="bi bi-envelope me-2 text-primary"></i> Reset Password
                             </Dropdown.Item>
@@ -253,7 +265,7 @@ export default function ClientUsersPage({ params }) {
                   <tr>
                     <td colSpan="4" className="text-center text-muted py-5">
                       <i className="bi bi-people fs-1 d-block mb-3 opacity-25"></i>
-                      No portal users found for this client. Click "Add Portal User" to create one.
+                      No portal users found.
                     </td>
                   </tr>
                 )}
@@ -261,6 +273,15 @@ export default function ClientUsersPage({ params }) {
             </Table>
           )}
         </Card.Body>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(users.length / pageSize))}
+          totalItems={users.length}
+          onPageChange={setCurrentPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+          itemName="portal users"
+        />
       </Card>
 
       <Modal show={showModal} onHide={handleClose}>

@@ -16,6 +16,7 @@ import Col from "react-bootstrap/Col";
 import Spinner from "react-bootstrap/Spinner";
 import Modal from "react-bootstrap/Modal";
 import ProgressBar from "react-bootstrap/ProgressBar";
+import Collapse from "react-bootstrap/Collapse";
 import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
@@ -317,6 +318,7 @@ export default function CampaignManagementDashboard()
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [emailDispatches, setEmailDispatches] = useState([]);
   const [emailAnalytics, setEmailAnalytics] = useState(null);
+  const [report, setReport] = useState(null);
 
   // Call Campaign Progress
   const [callProgress, setCallProgress] = useState(null);
@@ -325,6 +327,7 @@ export default function CampaignManagementDashboard()
   const [selectedDispatch, setSelectedDispatch] = useState(null);
   const [loadingDispatchDetail, setLoadingDispatchDetail] = useState(false);
   const [showDispatchDetailModal, setShowDispatchDetailModal] = useState(false);
+  const [showDispatchHistory, setShowDispatchHistory] = useState(true);
 
   // ── Modal/Confirm dialog states ──────────────────────────────────────────────
   const [showDispatchConfirm, setShowDispatchConfirm] = useState(false);
@@ -417,6 +420,16 @@ export default function CampaignManagementDashboard()
         ]);
         setEmailDispatches(dispRes.data.data);
         setEmailAnalytics(anRes.data.data);
+      }
+
+      // Fetch the full rich report for ANY approved campaign (used for unified KPIs)
+      if (campData.status !== "draft") {
+        try {
+          const reportRes = await api.get(`/reports/campaigns/${campaignId}`);
+          setReport(reportRes.data.data);
+        } catch(e) {
+          console.error("Failed to load rich report", e);
+        }
       }
     } catch (err)
     {
@@ -706,6 +719,16 @@ The Acme Team</p>`
     return url;
   };
 
+  const isEmail = campaign?.type === 'email';
+  const metrics = report?.metrics || {};
+  const base = metrics.delivered > 0 ? metrics.delivered : metrics.sent;
+  const openRate = base ? ((metrics.opened / base) * 100).toFixed(2) : 0;
+  const ctr = base ? ((metrics.clicked / base) * 100).toFixed(2) : 0;
+  const ctor = metrics.opened ? ((metrics.clicked / metrics.opened) * 100).toFixed(2) : 0;
+  const bounceRate = metrics.sent ? ((metrics.bounced / metrics.sent) * 100).toFixed(2) : 0;
+  const unsubscribeRate = base ? ((metrics.unsubscribed / base) * 100).toFixed(2) : 0;
+  const audienceCount = campaign?.audienceCount || 0;
+
   if (loading) return <AppLayout role="manager"><LoadingSpinner /></AppLayout>;
   if (error || !campaign) return <AppLayout role="manager"><AlertMessage message={error} /></AppLayout>;
 
@@ -776,6 +799,92 @@ The Acme Team</p>`
           </Card>
         </Col>
       </Row>
+
+      {/* OVERARCHING KPI SUMMARY CARDS */}
+      {report && (
+        <Row className="mb-4 g-4">
+          <Col md={3}>
+            <Card className="h-100 border-0 shadow-sm rounded-3 text-center">
+              <Card.Body className="p-4">
+                <div className="text-muted small text-uppercase fw-bold mb-1">Audience Size</div>
+                <div className="display-6 fw-bold text-primary">{audienceCount}</div>
+                <div className="text-muted small mt-1">Leads assigned to campaign</div>
+              </Card.Body>
+            </Card>
+          </Col>
+
+          <Col md={3}>
+            <Card className="h-100 border-0 shadow-sm rounded-3 text-center">
+              <Card.Body className="p-4">
+                <div className="text-muted small text-uppercase fw-bold mb-1">
+                  {isEmail ? "Emails Dispatched" : "Calls Logged"}
+                </div>
+                <div className="display-6 fw-bold text-info">
+                  {isEmail ? (metrics.sent || 0) : (metrics.callsLogged ?? metrics.totalCalls ?? 0)}
+                </div>
+                <div className="text-muted small mt-1">Total activity count</div>
+              </Card.Body>
+            </Card>
+          </Col>
+
+          <Col md={3}>
+            <Card className="h-100 border-0 shadow-sm rounded-3 text-center">
+              <Card.Body className="p-4">
+                <div className="text-muted small text-uppercase fw-bold mb-1">
+                  {isEmail ? "Emails Opened" : "Calls Answered"}
+                </div>
+                <div className="display-6 fw-bold text-warning">
+                  {isEmail ? (metrics.opened || 0) : (metrics.outcomes?.Answered ?? metrics.funnel?.reached ?? 0)}
+                </div>
+                <div className="text-muted small mt-1">
+                  {isEmail ? `Open Rate: ${openRate}%` : "Direct connections"}
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+
+          <Col md={3}>
+            <Card className="h-100 border-0 shadow-sm rounded-3 text-center bg-success text-white">
+              <Card.Body className="p-4">
+                <div className="small text-uppercase fw-bold mb-1 opacity-75">Secured Conversions</div>
+                <div className="display-6 fw-bold">{metrics.converted ?? metrics.funnel?.converted ?? 0}</div>
+                <div className="small mt-1 opacity-75">
+                  {isEmail ? "Final Conversions" : "Final Conversion Confirmed By Manager"}
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* DETAILED CHANNEL ANALYTICS (CALL OUTCOME BREAKDOWN) */}
+      {report && !isEmail && (
+        <Card className="border-0 shadow-sm rounded-3 mb-4">
+          <Card.Header className="bg-white border-0 pt-4 px-4 pb-2 fw-bold">
+            <i className="bi bi-telephone-outbound text-success me-2"></i> Call Outcome Breakdown
+          </Card.Header>
+          <Card.Body className="p-4 pt-0">
+            <Row className="g-3">
+              {metrics.outcomes && Object.keys(metrics.outcomes).length > 0 ? Object.entries(metrics.outcomes).map(([outcome, count]) => (
+                <Col md={4} key={outcome}>
+                  <div className="p-3 border rounded-3 d-flex justify-content-between align-items-center">
+                    <span className="fw-medium text-dark">{outcome}</span>
+                    <Badge bg={
+                      outcome === 'Converted' ? 'success' :
+                      outcome === 'Answered' ? 'primary' :
+                      outcome === 'Callback Requested' ? 'info text-dark' : 'secondary'
+                    } className="fs-6 px-3 py-1">
+                      {count}
+                    </Badge>
+                  </div>
+                </Col>
+              )) : (
+                <div className="text-muted text-center py-4">No call outcome data recorded yet.</div>
+              )}
+            </Row>
+          </Card.Body>
+        </Card>
+      )}
 
       <Tabs defaultActiveKey={campaign.status === "draft" ? "setup" : "team"} className="mb-4">
 
@@ -1358,27 +1467,64 @@ The Acme Team</p>`
                   </Col>
                 )}
 
-                {emailAnalytics && emailAnalytics.funnel && (
+                {report && (
                   <Col md={12} className="mb-4">
-                    <Card className="border shadow-sm">
-                      <Card.Header className="bg-light fw-semibold p-3">Funnel Analytics</Card.Header>
-                      <Card.Body>
-                        <Row className="text-center g-3">
-                          <Col sm={3}>
-                            <div className="text-muted small text-uppercase">Audience / Processed</div>
-                            <div className="fs-3 fw-bold">{emailAnalytics.funnel.audience}</div>
+                    <Card className="border-0 shadow-sm rounded-3">
+                      <Card.Header className="bg-white border-0 pt-4 px-4 pb-2 fw-bold">
+                        <i className="bi bi-bar-chart text-primary me-2"></i> Email Engagement Funnel & Rates
+                      </Card.Header>
+                      <Card.Body className="p-4 pt-0">
+                        <Row className="g-4 mb-4">
+                          <Col md={6}>
+                            <div className="p-3 bg-light rounded-3">
+                              <div className="d-flex justify-content-between fw-bold mb-1">
+                                <span>Delivered</span>
+                                <span>{metrics.delivered || 0} / {metrics.sent || 0}</span>
+                              </div>
+                              <ProgressBar variant="primary" now={metrics.sent ? ((metrics.delivered || 0) / metrics.sent) * 100 : 0} />
+                            </div>
                           </Col>
-                          <Col sm={3}>
-                            <div className="text-muted small text-uppercase">Total Sent</div>
-                            <div className="fs-3 fw-bold text-primary">{emailAnalytics.funnel.sent}</div>
+                          <Col md={6}>
+                            <div className="p-3 bg-light rounded-3">
+                              <div className="d-flex justify-content-between fw-bold mb-1">
+                                <span>Unique Opens (Rate: {openRate}%)</span>
+                                <span>{metrics.opened || 0}</span>
+                              </div>
+                              <ProgressBar variant="info" now={openRate} />
+                            </div>
                           </Col>
-                          <Col sm={3}>
-                            <div className="text-muted small text-uppercase">Total Opened</div>
-                            <div className="fs-3 fw-bold text-info">{emailAnalytics.funnel.opened}</div>
+                          <Col md={6}>
+                            <div className="p-3 bg-light rounded-3">
+                              <div className="d-flex justify-content-between fw-bold mb-1">
+                                <span>Unique Clicks (CTR: {ctr}%)</span>
+                                <span>{metrics.clicked || 0}</span>
+                              </div>
+                              <ProgressBar variant="warning" now={ctr} />
+                            </div>
                           </Col>
-                          <Col sm={3}>
-                            <div className="text-muted small text-uppercase">Link Clicks (Conversions)</div>
-                            <div className="fs-3 fw-bold text-success">{emailAnalytics.funnel.converted}</div>
+                          <Col md={6}>
+                            <div className="p-3 bg-light rounded-3">
+                              <div className="d-flex justify-content-between fw-bold mb-1">
+                                <span>Click-to-Open (CTOR: {ctor}%)</span>
+                                <span>{ctor}%</span>
+                              </div>
+                              <ProgressBar variant="success" now={ctor} />
+                            </div>
+                          </Col>
+                        </Row>
+
+                        <Row className="g-3">
+                          <Col md={6}>
+                            <div className="d-flex justify-content-between align-items-center p-3 border rounded-3">
+                              <span className="text-muted fw-medium"><i className="bi bi-exclamation-triangle text-danger me-2"></i> Bounced Emails</span>
+                              <span className="fw-bold text-danger">{metrics.bounced || 0} ({bounceRate}%)</span>
+                            </div>
+                          </Col>
+                          <Col md={6}>
+                            <div className="d-flex justify-content-between align-items-center p-3 border rounded-3">
+                              <span className="text-muted fw-medium"><i className="bi bi-dash-circle text-secondary me-2"></i> Unsubscribes</span>
+                              <span className="fw-bold text-secondary">{metrics.unsubscribed || 0} ({unsubscribeRate}%)</span>
+                            </div>
                           </Col>
                         </Row>
                       </Card.Body>
@@ -1388,61 +1534,66 @@ The Acme Team</p>`
 
                 <Col md={12}>
                   <Card className="border">
-                    <Card.Header className="bg-light fw-semibold p-3">Dispatch Job History</Card.Header>
-                    <Card.Body className="p-0">
-                      <Table responsive hover className="mb-0">
-                        <thead className="bg-light">
-                          <tr>
-                            <th>Job ID</th>
-                            <th>Status</th>
-                            <th>Processed</th>
-                            <th>Sent</th>
-                            <th>Failed</th>
-                            <th>Started At</th>
-                            <th className="text-end">Details</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {emailDispatches.length > 0 ? emailDispatches.map(job => (
-                            <tr key={job.id}>
-                              <td className="align-middle fw-medium">{job.id.substring(0, 8)}...</td>
-                              <td className="align-middle">
-                                <Badge bg={job.status === 'completed' ? 'success' : job.status === 'failed' ? 'danger' : 'warning text-dark'}>
-                                  {job.status}
-                                </Badge>
-                              </td>
-                              <td className="align-middle">{job.processed}</td>
-                              <td className="align-middle text-primary fw-bold">{job.sent}</td>
-                              <td className="align-middle text-danger">{job.failed}</td>
-                              <td className="align-middle">{new Date(job.createdAt).toLocaleString()}</td>
-                              <td className="align-middle text-end">
-                                <Button
-                                  variant="outline-primary"
-                                  size="sm"
-                                  className="rounded-pill px-2"
-                                  onClick={async () => {
-                                    setLoadingDispatchDetail(true);
-                                    setShowDispatchDetailModal(true);
-                                    try {
-                                      const res = await api.get(`/email/dispatches/${job.id}`);
-                                      setSelectedDispatch(res.data.data);
-                                    } catch (e) {
-                                      setSelectedDispatch({ error: 'Failed to load details.' });
-                                    } finally {
-                                      setLoadingDispatchDetail(false);
-                                    }
-                                  }}
-                                >
-                                  <i className="bi bi-info-circle me-1"></i>View
-                                </Button>
-                              </td>
-                            </tr>
-                          )) : (
-                            <tr><td colSpan="7" className="text-center text-muted py-4">No dispatch jobs found.</td></tr>
-                          )}
-                        </tbody>
-                      </Table>
-                    </Card.Body>
+                    <Card.Header className="bg-light fw-semibold p-3 d-flex justify-content-between align-items-center" style={{ cursor: 'pointer' }} onClick={() => setShowDispatchHistory(!showDispatchHistory)}>
+                      <span>Dispatch Job History</span>
+                      <i className={`bi bi-chevron-${showDispatchHistory ? 'up' : 'down'}`}></i>
+                    </Card.Header>
+                    <Collapse in={showDispatchHistory}>
+                      <div>
+                        <Card.Body className="p-0">
+                          <Table responsive hover className="mb-0">
+                            <thead className="bg-light">
+                              <tr>
+                                <th>Status</th>
+                                <th>Processed</th>
+                                <th>Sent</th>
+                                <th>Failed</th>
+                                <th>Started At</th>
+                                <th className="text-end">Details</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {emailDispatches.length > 0 ? emailDispatches.map(job => (
+                                <tr key={job.id}>
+                                  <td className="align-middle">
+                                    <Badge bg={job.status === 'completed' ? 'success' : job.status === 'failed' ? 'danger' : 'warning text-dark'}>
+                                      {job.status}
+                                    </Badge>
+                                  </td>
+                                  <td className="align-middle">{job.processed}</td>
+                                  <td className="align-middle text-primary fw-bold">{job.sent}</td>
+                                  <td className="align-middle text-danger">{job.failed}</td>
+                                  <td className="align-middle">{new Date(job.createdAt).toLocaleString()}</td>
+                                  <td className="align-middle text-end">
+                                    <Button
+                                      variant="outline-primary"
+                                      size="sm"
+                                      className="rounded-pill px-3 fw-medium"
+                                      onClick={async () => {
+                                        setLoadingDispatchDetail(true);
+                                        setShowDispatchDetailModal(true);
+                                        try {
+                                          const res = await api.get(`/email/dispatches/${job.id}`);
+                                          setSelectedDispatch(res.data.data);
+                                        } catch (e) {
+                                          setSelectedDispatch({ error: 'Failed to load details.' });
+                                        } finally {
+                                          setLoadingDispatchDetail(false);
+                                        }
+                                      }}
+                                    >
+                                      View
+                                    </Button>
+                                  </td>
+                                </tr>
+                              )) : (
+                                <tr><td colSpan="6" className="text-center text-muted py-4">No dispatch jobs found.</td></tr>
+                              )}
+                            </tbody>
+                          </Table>
+                        </Card.Body>
+                      </div>
+                    </Collapse>
                   </Card>
                 </Col>
               </Row>
@@ -1592,30 +1743,61 @@ The Acme Team</p>`
           ) : selectedDispatch?.error ? (
             <AlertMessage message={selectedDispatch.error} />
           ) : selectedDispatch ? (
-            <dl className="row mb-0">
-              <dt className="col-sm-4 text-muted fw-medium mb-3">Job ID</dt>
-              <dd className="col-sm-8 mb-3"><code>{selectedDispatch.id}</code></dd>
-              <dt className="col-sm-4 text-muted fw-medium mb-3">Status</dt>
-              <dd className="col-sm-8 mb-3">
-                <Badge bg={selectedDispatch.status === 'completed' ? 'success' : selectedDispatch.status === 'failed' ? 'danger' : 'warning text-dark'}>{selectedDispatch.status}</Badge>
-              </dd>
-              <dt className="col-sm-4 text-muted fw-medium mb-3">Processed</dt>
-              <dd className="col-sm-8 mb-3">{selectedDispatch.processed ?? '—'}</dd>
-              <dt className="col-sm-4 text-muted fw-medium mb-3">Sent</dt>
-              <dd className="col-sm-8 mb-3 text-primary fw-bold">{selectedDispatch.sent ?? '—'}</dd>
-              <dt className="col-sm-4 text-muted fw-medium mb-3">Failed</dt>
-              <dd className="col-sm-8 mb-3 text-danger fw-bold">{selectedDispatch.failed ?? '—'}</dd>
-              <dt className="col-sm-4 text-muted fw-medium mb-3">Started At</dt>
-              <dd className="col-sm-8 mb-3">{(selectedDispatch.startedAt || selectedDispatch.createdAt) ? new Date(selectedDispatch.startedAt || selectedDispatch.createdAt).toLocaleString() : '—'}</dd>
-              <dt className="col-sm-4 text-muted fw-medium mb-3">Completed At</dt>
-              <dd className="col-sm-8 mb-3">{(selectedDispatch.finishedAt || selectedDispatch.completedAt) ? new Date(selectedDispatch.finishedAt || selectedDispatch.completedAt).toLocaleString() : '—'}</dd>
-              {selectedDispatch.failureReason && (
-                <>
-                  <dt className="col-sm-4 text-muted fw-medium mb-0">Failure Reason</dt>
-                  <dd className="col-sm-8 mb-0 text-danger">{selectedDispatch.failureReason}</dd>
-                </>
-              )}
-            </dl>
+              <div className="d-flex flex-column gap-4">
+                <div className="d-flex justify-content-between align-items-center p-3 bg-light rounded-3 border">
+                  <div>
+                    <div className="text-muted small text-uppercase fw-bold">Dispatch Status</div>
+                    <div className="fs-5 mt-1">
+                      <Badge bg={selectedDispatch.status === 'completed' ? 'success' : selectedDispatch.status === 'failed' ? 'danger' : 'warning text-dark'} className="px-3 py-2 rounded-pill fs-6 text-uppercase">
+                        {selectedDispatch.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="text-end">
+                    <div className="text-muted small text-uppercase fw-bold">Time Window</div>
+                    <div className="fw-medium mt-1 text-dark">
+                      {(selectedDispatch.startedAt || selectedDispatch.createdAt) ? new Date(selectedDispatch.startedAt || selectedDispatch.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '—'}
+                      {' - '}
+                      {(selectedDispatch.finishedAt || selectedDispatch.completedAt) ? new Date(selectedDispatch.finishedAt || selectedDispatch.completedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                <Row className="g-3">
+                  <Col md={4}>
+                    <Card className="border-0 shadow-sm rounded-3 h-100 text-center">
+                      <Card.Body className="p-3">
+                        <div className="text-muted small text-uppercase fw-bold mb-1">Processed</div>
+                        <div className="fs-3 fw-bold text-dark">{selectedDispatch.processed ?? '—'}</div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col md={4}>
+                    <Card className="border-0 shadow-sm rounded-3 h-100 text-center">
+                      <Card.Body className="p-3">
+                        <div className="text-muted small text-uppercase fw-bold mb-1">Sent</div>
+                        <div className="fs-3 fw-bold text-primary">{selectedDispatch.sent ?? '—'}</div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col md={4}>
+                    <Card className="border-0 shadow-sm rounded-3 h-100 text-center" style={{ backgroundColor: '#fff5f5' }}>
+                      <Card.Body className="p-3">
+                        <div className="text-muted small text-uppercase fw-bold mb-1 text-danger">Failed</div>
+                        <div className="fs-3 fw-bold text-danger">{selectedDispatch.failed ?? '—'}</div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
+
+                {selectedDispatch.failureReason && (
+                  <AlertMessage variant="danger" message={`Failure Reason: ${selectedDispatch.failureReason}`} />
+                )}
+                
+                <div className="text-muted small text-center">
+                  Started on {(selectedDispatch.startedAt || selectedDispatch.createdAt) ? new Date(selectedDispatch.startedAt || selectedDispatch.createdAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '—'}
+                </div>
+              </div>
           ) : null}
         </Modal.Body>
         <Modal.Footer className="border-0 pt-0">

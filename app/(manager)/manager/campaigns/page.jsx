@@ -11,6 +11,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
@@ -21,6 +22,8 @@ export default function CampaignsPage() {
 
   const [clients, setClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const loadCampaigns = async (clientFilter = "") => {
     try {
@@ -50,9 +53,14 @@ export default function CampaignsPage() {
     loadCampaigns();
   }, []);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedClientId, pageSize]);
+
   const handleClientFilterChange = (e) => {
     const val = e.target.value;
     setSelectedClientId(val);
+    setCurrentPage(1);
     loadCampaigns(val);
   };
 
@@ -65,6 +73,8 @@ export default function CampaignsPage() {
       default: return "secondary";
     }
   };
+
+  const paginatedList = campaigns.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <AppLayout role="manager">
@@ -117,7 +127,7 @@ export default function CampaignsPage() {
               </thead>
               <tbody>
                 {campaigns.length > 0 ? (
-                  campaigns.map((camp) => (
+                  paginatedList.map((camp) => (
                     <tr key={camp.id}>
                       <td className="px-4 py-3 fw-bold">
                         <Link href={`/manager/campaigns/${camp.id}`} className="text-decoration-none text-dark">
@@ -164,6 +174,15 @@ export default function CampaignsPage() {
             </Table>
           )}
         </Card.Body>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(campaigns.length / pageSize))}
+          totalItems={campaigns.length}
+          onPageChange={setCurrentPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+          itemName="campaigns"
+        />
       </Card>
     </AppLayout>
   );

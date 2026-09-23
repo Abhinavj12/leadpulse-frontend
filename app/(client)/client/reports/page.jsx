@@ -5,9 +5,9 @@ import Card from "react-bootstrap/Card";
 import Table from "react-bootstrap/Table";
 import Badge from "react-bootstrap/Badge";
 import Button from "react-bootstrap/Button";
-import Row from "react-bootstrap/Row";
-import Col from "react-bootstrap/Col";
 import Nav from "react-bootstrap/Nav";
+import Form from "react-bootstrap/Form";
+import InputGroup from "react-bootstrap/InputGroup";
 
 import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
@@ -16,15 +16,23 @@ import AlertMessage from "@/components/ui/AlertMessage";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 import { ToastNotification } from "@/components/ui/ToastNotification";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 export default function ClientReportsHubPage() {
   const [sequences, setSequences] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
   const [activeTab, setActiveTab] = useState("all");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloadingKey, setDownloadingKey] = useState(null);
   const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
+
+  // Pagination states
+  const [seqPage, setSeqPage] = useState(1);
+  const [seqPageSize, setSeqPageSize] = useState(10);
+  const [campPage, setCampPage] = useState(1);
+  const [campPageSize, setCampPageSize] = useState(10);
 
   useEffect(() => {
     let mounted = true;
@@ -50,6 +58,12 @@ export default function ClientReportsHubPage() {
     return () => { mounted = false; };
   }, []);
 
+  // Reset pagination when search query changes
+  useEffect(() => {
+    setSeqPage(1);
+    setCampPage(1);
+  }, [search, seqPageSize, campPageSize]);
+
   const downloadFile = async (type, id, name, format) => {
     try {
       setDownloadingKey(`${type}-${id}-${format}`);
@@ -74,6 +88,22 @@ export default function ClientReportsHubPage() {
     }
   };
 
+  const filteredSequences = sequences.filter(s => 
+    !search || s.name?.toLowerCase().includes(search.toLowerCase())
+  );
+  const filteredCampaigns = campaigns.filter(c => 
+    !search || c.name?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Paginated data calculations
+  const seqTotalItems = filteredSequences.length;
+  const seqTotalPages = Math.ceil(seqTotalItems / seqPageSize) || 1;
+  const paginatedSequences = filteredSequences.slice((seqPage - 1) * seqPageSize, seqPage * seqPageSize);
+
+  const campTotalItems = filteredCampaigns.length;
+  const campTotalPages = Math.ceil(campTotalItems / campPageSize) || 1;
+  const paginatedCampaigns = filteredCampaigns.slice((campPage - 1) * campPageSize, campPage * campPageSize);
+
   if (loading) return <AppLayout role="client"><LoadingSpinner /></AppLayout>;
   if (error) return <AppLayout role="client"><AlertMessage message={error} /></AppLayout>;
 
@@ -84,26 +114,41 @@ export default function ClientReportsHubPage() {
         subtitle="Download official PDF performance summaries and Excel lead exports for your motions and campaigns." 
       />
 
-      {/* TAB SELECTOR */}
+      {/* TAB & SEARCH SELECTOR */}
       <Card className="border-0 shadow-sm rounded-3 mb-4">
         <Card.Body className="p-3">
-          <Nav variant="pills" activeKey={activeTab} onSelect={(k) => setActiveTab(k)}>
-            <Nav.Item>
-              <Nav.Link eventKey="all" className="rounded-pill px-4 py-2">
-                All Deliverables ({sequences.length + campaigns.length})
-              </Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="sequences" className="rounded-pill px-4 py-2">
-                Sequence Motions ({sequences.length})
-              </Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="campaigns" className="rounded-pill px-4 py-2">
-                Campaigns ({campaigns.length})
-              </Nav.Link>
-            </Nav.Item>
-          </Nav>
+          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
+            <Nav variant="pills" activeKey={activeTab} onSelect={(k) => setActiveTab(k)}>
+              <Nav.Item>
+                <Nav.Link eventKey="all" className="rounded-pill px-4 py-2">
+                  All Deliverables ({filteredSequences.length + filteredCampaigns.length})
+                </Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="sequences" className="rounded-pill px-4 py-2">
+                  Sequence Motions ({filteredSequences.length})
+                </Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="campaigns" className="rounded-pill px-4 py-2">
+                  Campaigns ({filteredCampaigns.length})
+                </Nav.Link>
+              </Nav.Item>
+            </Nav>
+
+            <InputGroup style={{ maxWidth: "300px" }}>
+              <InputGroup.Text className="bg-white border-end-0">
+                <i className="bi bi-search text-muted"></i>
+              </InputGroup.Text>
+              <Form.Control
+                type="text"
+                placeholder="Search reports by title..."
+                className="border-start-0"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </InputGroup>
+          </div>
         </Card.Body>
       </Card>
 
@@ -112,7 +157,7 @@ export default function ClientReportsHubPage() {
         <Card className="border-0 shadow-sm rounded-3 mb-4">
           <Card.Header className="bg-white border-0 pt-4 px-4 pb-2 fw-bold d-flex justify-content-between align-items-center">
             <span><i className="bi bi-diagram-3 text-primary me-2"></i> Sequence Motion Reports (PDF & Excel)</span>
-            <Badge bg="primary" pill>{sequences.length}</Badge>
+            <Badge bg="primary" pill>{filteredSequences.length}</Badge>
           </Card.Header>
           <Card.Body className="p-0">
             <Table responsive hover className="mb-0 align-middle">
@@ -126,8 +171,8 @@ export default function ClientReportsHubPage() {
                 </tr>
               </thead>
               <tbody>
-                {sequences.length > 0 ? (
-                  sequences.map((seq, idx) => (
+                {paginatedSequences.length > 0 ? (
+                  paginatedSequences.map((seq, idx) => (
                     <tr key={seq.id ? `seq-${seq.id}-${idx}` : idx}>
                       <td className="fw-bold text-dark">{seq.name}</td>
                       <td className="text-capitalize">{seq.billing?.pricingModel?.replace('_', ' ') || 'Unpriced'}</td>
@@ -165,6 +210,17 @@ export default function ClientReportsHubPage() {
               </tbody>
             </Table>
           </Card.Body>
+
+          {/* SEQUENCE PAGINATION CONTROL */}
+          <PaginationControl
+            currentPage={seqPage}
+            totalPages={seqTotalPages}
+            totalItems={seqTotalItems}
+            pageSize={seqPageSize}
+            onPageChange={setSeqPage}
+            onPageSizeChange={setSeqPageSize}
+            itemName="sequence reports"
+          />
         </Card>
       )}
 
@@ -173,7 +229,7 @@ export default function ClientReportsHubPage() {
         <Card className="border-0 shadow-sm rounded-3 mb-4">
           <Card.Header className="bg-white border-0 pt-4 px-4 pb-2 fw-bold d-flex justify-content-between align-items-center">
             <span><i className="bi bi-megaphone text-success me-2"></i> Individual Campaign Reports (PDF & Excel)</span>
-            <Badge bg="success" pill>{campaigns.length}</Badge>
+            <Badge bg="success" pill>{filteredCampaigns.length}</Badge>
           </Card.Header>
           <Card.Body className="p-0">
             <Table responsive hover className="mb-0 align-middle">
@@ -187,8 +243,8 @@ export default function ClientReportsHubPage() {
                 </tr>
               </thead>
               <tbody>
-                {campaigns.length > 0 ? (
-                  campaigns.map((camp, idx) => (
+                {paginatedCampaigns.length > 0 ? (
+                  paginatedCampaigns.map((camp, idx) => (
                     <tr key={camp.id ? `camp-${camp.id}-${idx}` : idx}>
                       <td className="fw-bold text-dark">{camp.name}</td>
                       <td>
@@ -234,6 +290,17 @@ export default function ClientReportsHubPage() {
               </tbody>
             </Table>
           </Card.Body>
+
+          {/* CAMPAIGN PAGINATION CONTROL */}
+          <PaginationControl
+            currentPage={campPage}
+            totalPages={campTotalPages}
+            totalItems={campTotalItems}
+            pageSize={campPageSize}
+            onPageChange={setCampPage}
+            onPageSizeChange={setCampPageSize}
+            itemName="campaign reports"
+          />
         </Card>
       )}
 
@@ -241,3 +308,4 @@ export default function ClientReportsHubPage() {
     </AppLayout>
   );
 }
+

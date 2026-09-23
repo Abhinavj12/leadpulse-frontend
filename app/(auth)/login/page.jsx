@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import Button from "react-bootstrap/Button";
 import Form from "react-bootstrap/Form";
+import Script from "next/script";
 
 import AuthShell from "@/components/auth/AuthShell";
 import PasswordField from "@/components/auth/PasswordField";
@@ -36,7 +37,7 @@ export default function LoginPage() {
     setServerError("");
   };
 
-  const handleSubmit = async (event) => {
+    const handleSubmit = async (event) => {
     event.preventDefault();
     setServerError("");
     setErrors({});
@@ -50,18 +51,35 @@ export default function LoginPage() {
     }
 
     setSubmitting(true);
-    try {
-      const loggedInUser = await login({
-        email: form.email.trim().toLowerCase(),
-        password: form.password
-      });
-      redirectForRole(router, loggedInUser.role);
-    } catch (error) {
-      setErrors(getFieldErrors(error));
-      setServerError(getApiErrorMessage(error, "Unable to sign in. Please check your credentials."));
-    } finally {
+    
+    if (!window.grecaptcha) {
+      setServerError("reCAPTCHA failed to load. Please refresh and try again.");
       setSubmitting(false);
+      return;
     }
+
+    window.grecaptcha.ready(() => {
+      window.grecaptcha
+        .execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'login' })
+        .then(async (token) => {
+          try {
+            const loggedInUser = await login({
+              email: form.email.trim().toLowerCase(),
+              password: form.password,
+              recaptchaToken: token // Passed to your auth context and then API
+            });
+            redirectForRole(router, loggedInUser.role);
+          } catch (error) {
+            setErrors(getFieldErrors(error));
+            setServerError(getApiErrorMessage(error, "Unable to sign in. Please check your credentials."));
+            setSubmitting(false); // Reset here since we don't use finally
+          } 
+        })
+        .catch(() => {
+          setServerError("Failed to verify reCAPTCHA.");
+          setSubmitting(false);
+        });
+    });
   };
 
   return (
@@ -74,6 +92,10 @@ export default function LoginPage() {
         </span>
       }
     >
+       <Script
+        src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`}
+        strategy="lazyOnload"
+      />
       <AlertMessage message={serverError} />
 
       <Form onSubmit={handleSubmit} noValidate>

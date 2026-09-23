@@ -19,6 +19,7 @@ import CampaignStatusBadge from "@/components/executive/CampaignStatusBadge";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 import { getCampaignQueueAction } from "@/lib/executive/campaignQueueAction";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 const STATUS_FILTERS = ["all", "active", "paused", "completed", "draft"];
 
@@ -28,6 +29,8 @@ export default function ExecutiveCampaignsPage() {
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const loadCampaigns = async () => {
     setLoading(true);
@@ -46,6 +49,10 @@ export default function ExecutiveCampaignsPage() {
     loadCampaigns();
   }, []);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, pageSize]);
+
   const filtered = useMemo(() => {
     return campaigns.filter((c) => {
       if (statusFilter !== "all" && c.status !== statusFilter) return false;
@@ -57,6 +64,8 @@ export default function ExecutiveCampaignsPage() {
       return true;
     });
   }, [campaigns, statusFilter, search]);
+
+  const paginatedList = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const totals = useMemo(() => ({
     total: campaigns.length,
@@ -163,7 +172,7 @@ export default function ExecutiveCampaignsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((camp) => {
+                {paginatedList.map((camp) => {
                   const action = getCampaignQueueAction(camp.status);
                   return (
                     <tr key={camp.id} style={{ borderBottom: "1px solid #f8f9fa" }}>
@@ -203,6 +212,14 @@ export default function ExecutiveCampaignsPage() {
             </Table>
           )}
         </Card.Body>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(filtered.length / pageSize))}
+          totalItems={filtered.length}
+          onPageChange={setCurrentPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       </Card>
     </AppLayout>
   );

@@ -11,6 +11,7 @@ import Modal from "react-bootstrap/Modal";
 import AppLayout from "@/components/layout/AppLayout";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
@@ -18,6 +19,8 @@ export default function CadencesPage() {
   const [clients, setClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [cadences, setCadences] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -75,9 +78,14 @@ export default function CadencesPage() {
     fetchLeadLists();
   }, [formData.clientId]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedClientId, pageSize]);
+
   const handleClientFilterChange = (e) => {
     const val = e.target.value;
     setSelectedClientId(val);
+    setCurrentPage(1);
     loadData(val);
   };
 
@@ -140,6 +148,8 @@ export default function CadencesPage() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   };
 
+  const paginatedList = cadences.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <AppLayout role="manager">
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -178,54 +188,65 @@ export default function CadencesPage() {
               <LoadingSpinner />
             </div>
           ) : cadences.length > 0 ? (
-            <Table hover responsive className="mb-0 align-middle">
-              <thead className="bg-light text-muted">
-                <tr>
-                  <th className="px-4 py-3 fw-semibold border-bottom-0">Name</th>
-                  <th className="px-4 py-3 fw-semibold border-bottom-0">Client</th>
-                  <th className="px-4 py-3 fw-semibold border-bottom-0 text-center">Steps</th>
-                  <th className="px-4 py-3 fw-semibold border-bottom-0">Pricing Model</th>
-                  <th className="px-4 py-3 fw-semibold border-bottom-0">Rate</th>
-                  <th className="px-4 py-3 fw-semibold border-bottom-0 text-end">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cadences.map((cadence) => (
-                  <tr key={cadence.id}>
-                    <td className="px-4 py-3 fw-bold">
-                      <Link href={`/manager/cadences/${cadence.id}`} className="text-decoration-none text-dark hover-text-primary">
-                        {cadence.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-secondary fw-medium">
-                      {clients.find(c => c.id === cadence.clientId)?.name || "Unknown"}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill fw-bold fs-6">
-                        {cadence.stepCount || 0}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {cadence.pricingModel === 'cost_per_lead' ? (
-                        <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2">Cost Per Lead</span>
-                      ) : cadence.pricingModel === 'flat_retainer' ? (
-                        <span className="badge bg-info bg-opacity-10 text-info rounded-pill px-3 py-2">Flat Retainer</span>
-                      ) : (
-                        <span className="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2">Unpriced</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 fw-medium text-dark">
-                      {cadence.pricingModel === 'cost_per_lead' ? formatCurrency(cadence.ratePerLead) : formatCurrency(cadence.retainerAmount)}
-                    </td>
-                    <td className="px-4 py-3 text-end">
-                      <Link href={`/manager/cadences/${cadence.id}`} className="btn btn-light text-primary fw-bold btn-sm rounded-pill px-3 shadow-sm">
-                        Manage <i className="bi bi-arrow-right ms-1"></i>
-                      </Link>
-                    </td>
+            <>
+              <Table hover responsive className="mb-0 align-middle">
+                <thead className="bg-light text-muted">
+                  <tr>
+                    <th className="px-4 py-3 fw-semibold border-bottom-0">Name</th>
+                    <th className="px-4 py-3 fw-semibold border-bottom-0">Client</th>
+                    <th className="px-4 py-3 fw-semibold border-bottom-0 text-center">Steps</th>
+                    <th className="px-4 py-3 fw-semibold border-bottom-0">Pricing Model</th>
+                    <th className="px-4 py-3 fw-semibold border-bottom-0">Rate</th>
+                    <th className="px-4 py-3 fw-semibold border-bottom-0 text-end">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </Table>
+                </thead>
+                <tbody>
+                  {paginatedList.map((cadence) => (
+                    <tr key={cadence.id}>
+                      <td className="px-4 py-3 fw-bold">
+                        <Link href={`/manager/cadences/${cadence.id}`} className="text-decoration-none text-dark hover-text-primary">
+                          {cadence.name}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-secondary fw-medium">
+                        {clients.find(c => c.id === cadence.clientId)?.name || "Unknown"}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill fw-bold fs-6">
+                          {cadence.stepCount || 0}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {cadence.pricingModel === 'cost_per_lead' ? (
+                          <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2">Cost Per Lead</span>
+                        ) : cadence.pricingModel === 'flat_retainer' ? (
+                          <span className="badge bg-info bg-opacity-10 text-info rounded-pill px-3 py-2">Flat Retainer</span>
+                        ) : (
+                          <span className="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2">Unpriced</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 fw-medium text-dark">
+                        {cadence.pricingModel === 'cost_per_lead' ? formatCurrency(cadence.ratePerLead) : formatCurrency(cadence.retainerAmount)}
+                      </td>
+                      <td className="px-4 py-3 text-end">
+                        <Link href={`/manager/cadences/${cadence.id}`} className="btn btn-light text-primary fw-bold btn-sm rounded-pill px-3 shadow-sm">
+                          Manage <i className="bi bi-arrow-right ms-1"></i>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+              <PaginationControl
+                currentPage={currentPage}
+                totalPages={Math.max(1, Math.ceil(cadences.length / pageSize))}
+                totalItems={cadences.length}
+                onPageChange={setCurrentPage}
+                pageSize={pageSize}
+                onPageSizeChange={setPageSize}
+                itemName="cadences"
+              />
+            </>
           ) : (
             <div className="text-center text-muted py-5">
               <i className="bi bi-diagram-3 fs-1 d-block mb-3 opacity-25"></i>

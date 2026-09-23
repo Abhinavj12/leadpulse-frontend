@@ -1,30 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Card from "react-bootstrap/Card";
 import Table from "react-bootstrap/Table";
 import Badge from "react-bootstrap/Badge";
 import Button from "react-bootstrap/Button";
 import Form from "react-bootstrap/Form";
 import InputGroup from "react-bootstrap/InputGroup";
+import Row from "react-bootstrap/Row";
+import Col from "react-bootstrap/Col";
 
 import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import { ToastNotification } from "@/components/ui/ToastNotification";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
-export default function ClientCampaignsPage() {
+function ClientCampaignsContent() {
+  const searchParams = useSearchParams();
+  const initialType = searchParams.get("type") || "all";
+
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState(initialType);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [downloadingId, setDownloadingId] = useState(null);
   const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
+
+  useEffect(() => {
+    const queryType = searchParams.get("type");
+    if (queryType) {
+      setTypeFilter(queryType);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let mounted = true;
@@ -44,6 +60,11 @@ export default function ClientCampaignsPage() {
     fetchCampaigns();
     return () => { mounted = false; };
   }, []);
+
+  // Reset page when search or type filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, typeFilter, pageSize]);
 
   const downloadReport = async (campaignId, campaignName, format) => {
     try {
@@ -73,6 +94,16 @@ export default function ClientCampaignsPage() {
     return matchesSearch && matchesType;
   });
 
+  // Calculate stats
+  const activeCount = campaigns.filter(c => c.status?.toLowerCase() === 'active').length;
+  const completedCount = campaigns.filter(c => c.status?.toLowerCase() === 'completed').length;
+  const totalAudience = campaigns.reduce((acc, curr) => acc + (curr.audienceCount || 0), 0);
+
+  // Pagination calculation
+  const totalItems = filteredCampaigns.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const paginatedCampaigns = filteredCampaigns.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   if (loading) return <AppLayout role="client"><LoadingSpinner /></AppLayout>;
   if (error) return <AppLayout role="client"><AlertMessage message={error} /></AppLayout>;
 
@@ -82,6 +113,65 @@ export default function ClientCampaignsPage() {
         title="Outreach Campaigns" 
         subtitle="Detailed history of email and call campaigns run for your account." 
       />
+
+      {/* EXECUTIVE SUMMARY KPIS */}
+      <Row className="mb-4 g-3">
+        <Col md={3} sm={6}>
+          <Card className="border-0 shadow-sm rounded-3">
+            <Card.Body className="p-3 d-flex align-items-center justify-content-between">
+              <div>
+                <div className="text-muted small fw-semibold text-uppercase">Total Campaigns</div>
+                <div className="fs-4 fw-bold text-dark">{campaigns.length}</div>
+              </div>
+              <div className="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
+                <i className="bi bi-megaphone fs-4"></i>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col md={3} sm={6}>
+          <Card className="border-0 shadow-sm rounded-3">
+            <Card.Body className="p-3 d-flex align-items-center justify-content-between">
+              <div>
+                <div className="text-muted small fw-semibold text-uppercase">Active Channels</div>
+                <div className="fs-4 fw-bold text-primary">{activeCount}</div>
+              </div>
+              <div className="bg-info bg-opacity-10 text-info p-2 rounded-circle">
+                <i className="bi bi-play-circle fs-4"></i>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col md={3} sm={6}>
+          <Card className="border-0 shadow-sm rounded-3">
+            <Card.Body className="p-3 d-flex align-items-center justify-content-between">
+              <div>
+                <div className="text-muted small fw-semibold text-uppercase">Completed</div>
+                <div className="fs-4 fw-bold text-success">{completedCount}</div>
+              </div>
+              <div className="bg-success bg-opacity-10 text-success p-2 rounded-circle">
+                <i className="bi bi-check-circle fs-4"></i>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col md={3} sm={6}>
+          <Card className="border-0 shadow-sm rounded-3">
+            <Card.Body className="p-3 d-flex align-items-center justify-content-between">
+              <div>
+                <div className="text-muted small fw-semibold text-uppercase">Total Audience</div>
+                <div className="fs-4 fw-bold text-dark">{totalAudience}</div>
+              </div>
+              <div className="bg-warning bg-opacity-10 text-warning p-2 rounded-circle">
+                <i className="bi bi-people fs-4"></i>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
 
       {/* FILTER & SEARCH BAR */}
       <Card className="border-0 shadow-sm rounded-3 mb-4">
@@ -131,8 +221,8 @@ export default function ClientCampaignsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredCampaigns.length > 0 ? (
-                filteredCampaigns.map((c, idx) => {
+              {paginatedCampaigns.length > 0 ? (
+                paginatedCampaigns.map((c, idx) => {
                   const isEmail = c.type?.toLowerCase() === 'email';
                   const status = c.status?.toLowerCase();
                   return (
@@ -210,8 +300,28 @@ export default function ClientCampaignsPage() {
             </tbody>
           </Table>
         </Card.Body>
+
+        {/* PAGINATION CONTROL */}
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemName="campaigns"
+        />
       </Card>
       <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>
   );
 }
+
+export default function ClientCampaignsPage() {
+  return (
+    <Suspense fallback={<AppLayout role="client"><LoadingSpinner /></AppLayout>}>
+      <ClientCampaignsContent />
+    </Suspense>
+  );
+}
+

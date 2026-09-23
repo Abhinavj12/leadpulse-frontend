@@ -130,7 +130,7 @@ export default function ClientSequenceDetailPage({ params }) {
 
       {/* KPI SUMMARY CARDS */}
       <Row className="mb-4 g-4">
-        <Col md={3}>
+        <Col md={6}>
           <Card className="h-100 border-0 shadow-sm rounded-3 text-center">
             <Card.Body className="p-4">
               <div className="text-muted small text-uppercase fw-bold mb-1">Unique Prospects Reached</div>
@@ -140,40 +140,12 @@ export default function ClientSequenceDetailPage({ params }) {
           </Card>
         </Col>
 
-        <Col md={3}>
+        <Col md={6}>
           <Card className="h-100 border-0 shadow-sm rounded-3 text-center">
             <Card.Body className="p-4">
               <div className="text-muted small text-uppercase fw-bold mb-1">Total Conversions</div>
               <div className="display-6 fw-bold text-success">{totals.convertedLeads || totals.conversions || 0}</div>
               <div className="text-muted small mt-1">Confirmed conversions</div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col md={3}>
-          <Card className="h-100 border-0 shadow-sm rounded-3 text-center">
-            <Card.Body className="p-4">
-              <div className="text-muted small text-uppercase fw-bold mb-1">Contract Rate / Retainer</div>
-              <div className="display-6 fw-bold text-info">
-                {billing.pricingModel === 'cost_per_lead' ? `$${billing.ratePerLead || 0}` :
-                 billing.pricingModel === 'flat_retainer' ? `$${billing.retainerAmount || 0}` : 'N/A'}
-              </div>
-              <div className="text-muted small mt-1">
-                {billing.pricingModel === 'cost_per_lead' ? "Per confirmed conversion" : "Fixed retainer amount"}
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col md={3}>
-          <Card className="h-100 border-0 shadow-sm rounded-3 text-center bg-primary text-white">
-            <Card.Body className="p-4">
-              <div className="small text-uppercase fw-bold mb-1 opacity-75">Accrued Billing</div>
-              <div className="display-6 fw-bold">
-                ${billing.pricingModel === 'cost_per_lead' ? (billing.billableConversions * billing.ratePerLead).toFixed(2) :
-                  billing.pricingModel === 'flat_retainer' ? (billing.retainerAmount || 0).toFixed(2) : '0.00'}
-              </div>
-              <div className="small mt-1 opacity-75">Sequence-level single billing</div>
             </Card.Body>
           </Card>
         </Col>
@@ -226,6 +198,47 @@ export default function ClientSequenceDetailPage({ params }) {
           )}
         </Card.Body>
       </Card>
+
+      {/* BILLING & COMMERCIALS SECTION */}
+      {billing && billing.pricingModel && (
+        <Card className="border-0 shadow-sm rounded-3 mb-4">
+          <Card.Header className="bg-white border-0 pt-4 px-4 pb-2 fw-bold d-flex justify-content-between align-items-center">
+            <div>
+              <i className="bi bi-receipt text-success me-2"></i> Billing & Commercials
+            </div>
+          </Card.Header>
+          <Card.Body className="p-4 pt-0">
+            <Row className="g-4 mt-1">
+              <Col md={6}>
+                <div className="p-4 border rounded-3 bg-light h-100 d-flex flex-column justify-content-center">
+                  <div className="text-muted small text-uppercase fw-bold mb-1">Contract Rate / Retainer</div>
+                  <div className="display-6 fw-bold text-dark">
+                    {billing.pricingModel === 'cost_per_lead' ? `$${billing.ratePerLead || 0}` :
+                     billing.pricingModel === 'flat_retainer' ? `$${billing.retainerAmount || 0}` : 'N/A'}
+                  </div>
+                  <div className="text-muted small mt-1">
+                    {billing.pricingModel === 'cost_per_lead' ? "Per confirmed conversion" : "Fixed retainer amount"}
+                  </div>
+                </div>
+              </Col>
+              <Col md={6}>
+                <div className="p-4 border rounded-3 bg-success bg-opacity-10 border-success border-opacity-25 h-100 d-flex flex-column justify-content-center">
+                  <div className="text-success small text-uppercase fw-bold mb-1">Accrued Billing</div>
+                  <div className="display-6 fw-bold text-success">
+                    ${billing.pricingModel === 'cost_per_lead' ? (billing.amountAccrued || 0).toFixed(2) :
+                      billing.pricingModel === 'flat_retainer' ? (billing.retainerAmount || 0).toFixed(2) : '0.00'}
+                  </div>
+                  <div className="text-success small mt-1 opacity-75">
+                    {billing.pricingModel === 'cost_per_lead' ? 
+                      `Based on ${billing.billableConversions ?? billing.confirmedConversions ?? 0} billable conversion(s)` : 
+                      "Fixed amount billed per agreement"}
+                  </div>
+                </div>
+              </Col>
+            </Row>
+          </Card.Body>
+        </Card>
+      )}
 
       <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />
     </AppLayout>

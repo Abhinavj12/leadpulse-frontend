@@ -14,6 +14,7 @@ import PageHeader from "@/components/layout/PageHeader";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage, getFieldErrors } from "@/lib/auth/auth";
 
@@ -22,6 +23,10 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Create/Edit Modal State
   const [showModal, setShowModal] = useState(false);
@@ -55,6 +60,10 @@ export default function ClientsPage() {
   useEffect(() => {
     loadClients();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [pageSize]);
 
   const handleShowCreate = () => {
     setEditingClient(null);
@@ -129,6 +138,8 @@ export default function ClientsPage() {
     }
   };
 
+  const paginatedList = clients.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <AppLayout role="manager">
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -162,8 +173,8 @@ export default function ClientsPage() {
                 </tr>
               </thead>
               <tbody>
-                {clients.length > 0 ? (
-                  clients.map((client) => (
+                {paginatedList.length > 0 ? (
+                  paginatedList.map((client) => (
                     <tr key={client.id}>
                       <td className="px-4 py-3">
                         <div className="d-flex align-items-center">
@@ -187,7 +198,11 @@ export default function ClientsPage() {
                           <Dropdown.Toggle variant="light" size="sm" className="rounded-circle shadow-sm border-0 px-2 text-secondary" style={{ width: '36px', height: '36px' }}>
                             <i className="bi bi-three-dots-vertical"></i>
                           </Dropdown.Toggle>
-                          <Dropdown.Menu className="border-0 shadow-sm rounded-3">
+                          <Dropdown.Menu 
+                            renderOnMount 
+                            popperConfig={{ strategy: 'fixed' }} 
+                            className="border-0 shadow-sm rounded-3"
+                          >
                             <Dropdown.Item onClick={() => handleShowEdit(client)} className="fw-medium text-dark py-2">
                               <i className="bi bi-pencil me-2 text-secondary"></i> Edit Client
                             </Dropdown.Item>
@@ -218,6 +233,15 @@ export default function ClientsPage() {
             </Table>
           )}
         </Card.Body>
+
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(clients.length / pageSize))}
+          totalItems={clients.length}
+          onPageChange={setCurrentPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       </Card>
 
       <Modal show={showModal} onHide={handleClose}>

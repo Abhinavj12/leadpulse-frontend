@@ -16,6 +16,7 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ToastNotification } from "@/components/ui/ToastNotification";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 
@@ -23,6 +24,8 @@ export default function LeadListsPage() {
   const [clients, setClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [leadLists, setLeadLists] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   
   const [loadingClients, setLoadingClients] = useState(true);
   const [loadingLists, setLoadingLists] = useState(false);
@@ -101,6 +104,7 @@ export default function LeadListsPage() {
 
   useEffect(() => {
     let mounted = true;
+    setCurrentPage(1);
     if (!selectedClientId) {
       setLeadLists([]);
       setHistoryJobs([]);
@@ -240,6 +244,8 @@ export default function LeadListsPage() {
     }
   };
 
+  const paginatedList = leadLists.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <AppLayout role="manager">
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -366,51 +372,62 @@ export default function LeadListsPage() {
             {loadingLists ? (
               <div className="p-5 d-flex justify-content-center"><LoadingSpinner /></div>
             ) : leadLists.length > 0 ? (
-              <Table hover responsive className="mb-0 align-middle">
-                <thead className="bg-light text-muted">
-                  <tr>
-                    <th className="px-4 py-3 fw-semibold border-bottom-0">List Name</th>
-                    <th className="px-4 py-3 fw-semibold border-bottom-0">Status</th>
-                    <th className="px-4 py-3 fw-semibold border-bottom-0 text-center">Lead Count</th>
-                    <th className="px-4 py-3 fw-semibold border-bottom-0">Created At</th>
-                    <th className="px-4 py-3 fw-semibold border-bottom-0 text-end">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leadLists.map((list) => (
-                    <tr key={list.id}>
-                      <td className="px-4 py-3">
-                        <div className="d-flex align-items-center">
-                          <i className="bi bi-file-earmark-spreadsheet text-primary me-3 fs-4"></i>
-                          <Link href={`/manager/lead-lists/${list.id}`} className="text-decoration-none">
-                            <span className="fw-bold text-dark hover-text-primary">{list.name}</span>
-                          </Link>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {list.status === 'active' ? (
-                          <span className="badge bg-success bg-opacity-10 text-success px-3 py-2 rounded-pill fw-bold text-uppercase tracking-wide" style={{ fontSize: '0.7rem' }}>Active</span>
-                        ) : (
-                          <span className="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2 rounded-pill fw-bold text-uppercase tracking-wide" style={{ fontSize: '0.7rem' }}>Archived</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill fw-bold fs-6">
-                          {list.leadCount || 0}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-secondary fw-medium">{new Date(list.createdAt).toLocaleDateString()}</td>
-                      <td className="px-4 py-3 text-end">
-                        {list.status === 'active' && (
-                          <Button variant="light" size="sm" className="text-danger fw-bold rounded-pill px-3 shadow-sm" onClick={() => setArchiveTargetId(list.id)}>
-                            <i className="bi bi-archive me-1"></i> Archive
-                          </Button>
-                        )}
-                      </td>
+              <>
+                <Table hover responsive className="mb-0 align-middle">
+                  <thead className="bg-light text-muted">
+                    <tr>
+                      <th className="px-4 py-3 fw-semibold border-bottom-0">List Name</th>
+                      <th className="px-4 py-3 fw-semibold border-bottom-0">Status</th>
+                      <th className="px-4 py-3 fw-semibold border-bottom-0 text-center">Lead Count</th>
+                      <th className="px-4 py-3 fw-semibold border-bottom-0">Created At</th>
+                      <th className="px-4 py-3 fw-semibold border-bottom-0 text-end">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {paginatedList.map((list) => (
+                      <tr key={list.id}>
+                        <td className="px-4 py-3">
+                          <div className="d-flex align-items-center">
+                            <i className="bi bi-file-earmark-spreadsheet text-primary me-3 fs-4"></i>
+                            <Link href={`/manager/lead-lists/${list.id}`} className="text-decoration-none">
+                              <span className="fw-bold text-dark hover-text-primary">{list.name}</span>
+                            </Link>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {list.status === 'active' ? (
+                            <span className="badge bg-success bg-opacity-10 text-success px-3 py-2 rounded-pill fw-bold text-uppercase tracking-wide" style={{ fontSize: '0.7rem' }}>Active</span>
+                          ) : (
+                            <span className="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2 rounded-pill fw-bold text-uppercase tracking-wide" style={{ fontSize: '0.7rem' }}>Archived</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill fw-bold fs-6">
+                            {list.leadCount || 0}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-secondary fw-medium">{new Date(list.createdAt).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-end">
+                          {list.status === 'active' && (
+                            <Button variant="light" size="sm" className="text-danger fw-bold rounded-pill px-3 shadow-sm" onClick={() => setArchiveTargetId(list.id)}>
+                              <i className="bi bi-archive me-1"></i> Archive
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+                <PaginationControl
+                  currentPage={currentPage}
+                  totalPages={Math.max(1, Math.ceil(leadLists.length / pageSize))}
+                  totalItems={leadLists.length}
+                  onPageChange={setCurrentPage}
+                  pageSize={pageSize}
+                  onPageSizeChange={setPageSize}
+                  itemName="lead lists"
+                />
+              </>
             ) : (
               <div className="text-center text-muted py-5">
                 <i className="bi bi-folder-x fs-1 d-block mb-3 opacity-25"></i>

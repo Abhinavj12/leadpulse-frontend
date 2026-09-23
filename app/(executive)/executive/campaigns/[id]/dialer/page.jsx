@@ -17,6 +17,7 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
+import { getCampaignQueueAction } from "@/lib/executive/campaignQueueAction";
 
 // --- Outcome Configuration ---
 // Values MUST exactly match the backend enum in call.validation.js
@@ -247,6 +248,7 @@ export default function ExecutiveDialer() {
 
   // Lead state
   const [lead, setLead] = useState(null);
+  const [campaign, setCampaign] = useState(null);
   const [loading, setLoading] = useState(true);
   const [queueEmpty, setQueueEmpty] = useState(false);
   const [error, setError] = useState("");
@@ -297,6 +299,14 @@ export default function ExecutiveDialer() {
     setCallStarted(false);
 
     try {
+      try {
+        const campRes = await api.get("/call/my-campaigns");
+        const foundCamp = campRes.data.data.find(c => c.id === campaignId);
+        if (foundCamp) setCampaign(foundCamp);
+      } catch (err) {
+        console.error("Failed to load campaign status", err);
+      }
+
       let res;
       if (specificLeadId) {
         // Jump to a specific lead (callback scenario or history re-dial)
@@ -443,6 +453,8 @@ export default function ExecutiveDialer() {
     );
   }
 
+  const action = getCampaignQueueAction(campaign?.status);
+  const canDial = action.canDial;
   const selectedOutcomeConfig = OUTCOMES.find(o => o.value === selectedOutcome);
 
   return (
@@ -497,6 +509,7 @@ export default function ExecutiveDialer() {
               variant="outline-success"
               className="rounded-pill px-4 fw-bold"
               onClick={() => setCallStarted(true)}
+              disabled={!canDial}
             >
               <i className="bi bi-stopwatch me-2"></i>Start Timer
             </Button>
@@ -532,9 +545,15 @@ export default function ExecutiveDialer() {
           <div className="d-flex gap-2 mt-3 flex-wrap">
             {lead.phone && (
               <a
-                href={`tel:${lead.phone}`}
-                className="btn btn-primary rounded-pill px-4 fw-bold shadow-sm"
-                onClick={() => !callStarted && setCallStarted(true)}
+                href={canDial ? `tel:${lead.phone}` : "#"}
+                className={`btn btn-primary rounded-pill px-4 fw-bold shadow-sm ${!canDial ? "disabled" : ""}`}
+                onClick={(e) => {
+                  if (!canDial) {
+                    e.preventDefault();
+                    return;
+                  }
+                  if (!callStarted) setCallStarted(true);
+                }}
               >
                 <i className="bi bi-telephone-fill me-2"></i>Call {lead.phone}
               </a>
@@ -543,7 +562,7 @@ export default function ExecutiveDialer() {
               variant="outline-secondary"
               className="rounded-pill px-4"
               onClick={handleSkip}
-              disabled={submitting}
+              disabled={submitting || !canDial}
             >
               <i className="bi bi-skip-forward me-2"></i>Skip for Now
             </Button>
@@ -561,166 +580,174 @@ export default function ExecutiveDialer() {
           <Card className="border-0 shadow rounded-4 overflow-hidden h-100">
             <div style={{ height: "5px", background: "linear-gradient(90deg, #198754, #20c997)" }} />
             <Card.Body className="p-4">
-              <h5 className="fw-bolder mb-1">Log Call Outcome</h5>
-              <p className="text-muted small mb-3">Select the result of this call attempt.</p>
-
-              {/* This lead has already had 3 attempts logged — the backend
-                  auto-resolves any lead to "completed" on its 4th remark,
-                  regardless of outcome, so the executive should know this
-                  submission is their last chance to work it. */}
-              {lead.previousRemarks?.length >= 3 && (
-                <div
-                  className="rounded-3 p-3 mb-3 d-flex align-items-start gap-2"
-                  style={{ background: "rgba(220, 53, 69, 0.08)", border: "1px solid rgba(220, 53, 69, 0.25)" }}
-                >
-                  <i className="bi bi-exclamation-triangle-fill text-danger mt-1 flex-shrink-0"></i>
-                  <div className="small text-dark">
-                    <span className="fw-bold">Final attempt on this lead.</span> Whatever outcome you log now will close it out of this campaign's queue for good.
-                  </div>
+              <h5 className="fw-bolder mb-1">{canDial ? "Log Call Outcome" : "Call Logging Disabled"}</h5>
+              {!canDial ? (
+                <div className="mt-4">
+                  <AlertMessage variant="warning" message={action.reason || "This campaign is not active. Call logging is disabled."} />
                 </div>
-              )}
+              ) : (
+                <>
+                  <p className="text-muted small mb-3">Select the result of this call attempt.</p>
 
-              {/* Outcome Selection */}
-              <div className="d-flex flex-column gap-2 mb-4">
-                {OUTCOMES.map(outcome => (
-                  <div
-                    key={outcome.value}
-                    role="button"
-                    onClick={() => {
-                      setSelectedOutcome(outcome.value);
-                      setSubmitError("");
-                    }}
-                    className={`rounded-3 p-3 border transition d-flex align-items-center gap-3 cursor-pointer`}
-                    style={{
-                      cursor: "pointer",
-                      borderWidth: "2px !important",
-                      border: selectedOutcome === outcome.value
-                        ? `2px solid var(--bs-${outcome.color})`
-                        : "2px solid #e9ecef",
-                      background: selectedOutcome === outcome.value
-                        ? `rgba(var(--bs-${outcome.color}-rgb, 13, 110, 253), 0.06)`
-                        : "white",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
+                  {/* This lead has already had 3 attempts logged — the backend
+                      auto-resolves any lead to "completed" on its 4th remark,
+                      regardless of outcome, so the executive should know this
+                      submission is their last chance to work it. */}
+                  {lead.previousRemarks?.length >= 3 && (
                     <div
-                      className={`d-flex align-items-center justify-content-center rounded-circle text-${outcome.color} flex-shrink-0`}
-                      style={{ width: "38px", height: "38px", background: `rgba(var(--bs-${outcome.color}-rgb, 13,110,253), 0.1)` }}
+                      className="rounded-3 p-3 mb-3 d-flex align-items-start gap-2"
+                      style={{ background: "rgba(220, 53, 69, 0.08)", border: "1px solid rgba(220, 53, 69, 0.25)" }}
                     >
-                      <i className={`bi ${outcome.icon}`}></i>
+                      <i className="bi bi-exclamation-triangle-fill text-danger mt-1 flex-shrink-0"></i>
+                      <div className="small text-dark">
+                        <span className="fw-bold">Final attempt on this lead.</span> Whatever outcome you log now will close it out of this campaign's queue for good.
+                      </div>
                     </div>
-                    <div className="flex-grow-1">
-                      <div className={`fw-bold text-${outcome.color === "warning" ? "dark" : outcome.color}`}>{outcome.label}</div>
-                      <div className="text-muted" style={{ fontSize: "0.78rem" }}>{outcome.description}</div>
-                    </div>
-                    {selectedOutcome === outcome.value && (
-                      <i className={`bi bi-check-circle-fill text-${outcome.color} flex-shrink-0`}></i>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Conditional Fields */}
-              {selectedOutcome && (
-                <div className="d-flex flex-column gap-3 mb-4">
-                  {/* Callback Date — only for callback_requested */}
-                  {selectedOutcomeConfig?.needsCallback && (
-                    <Form.Group>
-                      <Form.Label className="fw-bold small text-danger">
-                        <i className="bi bi-calendar-check me-1"></i>Follow-up Date *
-                      </Form.Label>
-                      <Form.Control
-                        type="date"
-                        value={followUpDate}
-                        onChange={e => setFollowUpDate(e.target.value)}
-                        min={new Date().toISOString().slice(0, 10)}
-                        className="rounded-3"
-                        required
-                      />
-                      <Form.Text className="text-muted">
-                        This lead is hidden from your queue until this date.
-                      </Form.Text>
-                    </Form.Group>
                   )}
 
-                  {/* Lead Status — only for contacted */}
-                  {selectedOutcomeConfig?.needsStatus && (
-                    <Form.Group>
-                      <Form.Label className="fw-bold small text-secondary">
-                        Update Lead Status (optional)
-                      </Form.Label>
-                      <Form.Select
-                        value={leadStatusUpdate}
-                        onChange={e => setLeadStatusUpdate(e.target.value)}
-                        className="rounded-3"
+                  {/* Outcome Selection */}
+                  <div className="d-flex flex-column gap-2 mb-4">
+                    {OUTCOMES.map(outcome => (
+                      <div
+                        key={outcome.value}
+                        role="button"
+                        onClick={() => {
+                          setSelectedOutcome(outcome.value);
+                          setSubmitError("");
+                        }}
+                        className={`rounded-3 p-3 border transition d-flex align-items-center gap-3 cursor-pointer`}
+                        style={{
+                          cursor: "pointer",
+                          borderWidth: "2px !important",
+                          border: selectedOutcome === outcome.value
+                            ? `2px solid var(--bs-${outcome.color})`
+                            : "2px solid #e9ecef",
+                          background: selectedOutcome === outcome.value
+                            ? `rgba(var(--bs-${outcome.color}-rgb, 13, 110, 253), 0.06)`
+                            : "white",
+                          transition: "all 0.15s ease",
+                        }}
                       >
-                        {LEAD_STATUS_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </Form.Select>
-                    </Form.Group>
+                        <div
+                          className={`d-flex align-items-center justify-content-center rounded-circle text-${outcome.color} flex-shrink-0`}
+                          style={{ width: "38px", height: "38px", background: `rgba(var(--bs-${outcome.color}-rgb, 13,110,253), 0.1)` }}
+                        >
+                          <i className={`bi ${outcome.icon}`}></i>
+                        </div>
+                        <div className="flex-grow-1">
+                          <div className={`fw-bold text-${outcome.color === "warning" ? "dark" : outcome.color}`}>{outcome.label}</div>
+                          <div className="text-muted" style={{ fontSize: "0.78rem" }}>{outcome.description}</div>
+                        </div>
+                        {selectedOutcome === outcome.value && (
+                          <i className={`bi bi-check-circle-fill text-${outcome.color} flex-shrink-0`}></i>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Conditional Fields */}
+                  {selectedOutcome && (
+                    <div className="d-flex flex-column gap-3 mb-4">
+                      {/* Callback Date — only for callback_requested */}
+                      {selectedOutcomeConfig?.needsCallback && (
+                        <Form.Group>
+                          <Form.Label className="fw-bold small text-danger">
+                            <i className="bi bi-calendar-check me-1"></i>Follow-up Date *
+                          </Form.Label>
+                          <Form.Control
+                            type="date"
+                            value={followUpDate}
+                            onChange={e => setFollowUpDate(e.target.value)}
+                            min={new Date().toISOString().slice(0, 10)}
+                            className="rounded-3"
+                            required
+                          />
+                          <Form.Text className="text-muted">
+                            This lead is hidden from your queue until this date.
+                          </Form.Text>
+                        </Form.Group>
+                      )}
+
+                      {/* Lead Status — only for contacted */}
+                      {selectedOutcomeConfig?.needsStatus && (
+                        <Form.Group>
+                          <Form.Label className="fw-bold small text-secondary">
+                            Update Lead Status (optional)
+                          </Form.Label>
+                          <Form.Select
+                            value={leadStatusUpdate}
+                            onChange={e => setLeadStatusUpdate(e.target.value)}
+                            className="rounded-3"
+                          >
+                            {LEAD_STATUS_OPTIONS.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </Form.Select>
+                        </Form.Group>
+                      )}
+
+                      {/* Call Duration */}
+                      <Form.Group>
+                        <Form.Label className="fw-bold small text-secondary">
+                          <i className="bi bi-stopwatch me-1"></i>
+                          Call Duration (minutes)
+                          {callStarted || callDuration ? (
+                            <span className="text-success ms-1 small">
+                              <i className="bi bi-check-circle-fill me-1"></i>
+                              {callDuration ? `${callDuration} min` : "tracking..."}
+                            </span>
+                          ) : (
+                            <span className="text-muted ms-1 small">(optional)</span>
+                          )}
+                        </Form.Label>
+                        <Form.Control
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          max="120"
+                          value={callDuration}
+                          onChange={e => setCallDuration(e.target.value)}
+                          placeholder="e.g. 3.5"
+                          className="rounded-3"
+                        />
+                      </Form.Group>
+
+                      {/* Notes */}
+                      <Form.Group>
+                        <Form.Label className="fw-bold small text-secondary">
+                          <i className="bi bi-chat-left-text me-1"></i>Notes (optional)
+                        </Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={3}
+                          value={notes}
+                          onChange={e => setNotes(e.target.value)}
+                          placeholder="What did you discuss? Key points, objections, next steps..."
+                          className="rounded-3"
+                          style={{ resize: "none" }}
+                        />
+                      </Form.Group>
+                    </div>
                   )}
 
-                  {/* Call Duration */}
-                  <Form.Group>
-                    <Form.Label className="fw-bold small text-secondary">
-                      <i className="bi bi-stopwatch me-1"></i>
-                      Call Duration (minutes)
-                      {callStarted || callDuration ? (
-                        <span className="text-success ms-1 small">
-                          <i className="bi bi-check-circle-fill me-1"></i>
-                          {callDuration ? `${callDuration} min` : "tracking..."}
-                        </span>
-                      ) : (
-                        <span className="text-muted ms-1 small">(optional)</span>
-                      )}
-                    </Form.Label>
-                    <Form.Control
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="120"
-                      value={callDuration}
-                      onChange={e => setCallDuration(e.target.value)}
-                      placeholder="e.g. 3.5"
-                      className="rounded-3"
-                    />
-                  </Form.Group>
-
-                  {/* Notes */}
-                  <Form.Group>
-                    <Form.Label className="fw-bold small text-secondary">
-                      <i className="bi bi-chat-left-text me-1"></i>Notes (optional)
-                    </Form.Label>
-                    <Form.Control
-                      as="textarea"
-                      rows={3}
-                      value={notes}
-                      onChange={e => setNotes(e.target.value)}
-                      placeholder="What did you discuss? Key points, objections, next steps..."
-                      className="rounded-3"
-                      style={{ resize: "none" }}
-                    />
-                  </Form.Group>
-                </div>
+                  {/* Submit Button */}
+                  <Button
+                    variant={selectedOutcomeConfig?.color === "warning" ? "warning" : (selectedOutcomeConfig?.color || "primary")}
+                    className="w-100 rounded-pill py-3 fw-bold shadow-sm"
+                    onClick={handleSubmitRemark}
+                    disabled={!selectedOutcome || submitting}
+                  >
+                    {submitting ? (
+                      <><Spinner animation="border" size="sm" className="me-2" />Logging...</>
+                    ) : selectedOutcome ? (
+                      <><i className={`bi ${selectedOutcomeConfig?.icon} me-2`}></i>
+                        Log: {selectedOutcomeConfig?.label}</>
+                    ) : (
+                      "Select an outcome above"
+                    )}
+                  </Button>
+                </>
               )}
-
-              {/* Submit Button */}
-              <Button
-                variant={selectedOutcomeConfig?.color === "warning" ? "warning" : (selectedOutcomeConfig?.color || "primary")}
-                className="w-100 rounded-pill py-3 fw-bold shadow-sm"
-                onClick={handleSubmitRemark}
-                disabled={!selectedOutcome || submitting}
-              >
-                {submitting ? (
-                  <><Spinner animation="border" size="sm" className="me-2" />Logging...</>
-                ) : selectedOutcome ? (
-                  <><i className={`bi ${selectedOutcomeConfig?.icon} me-2`}></i>
-                    Log: {selectedOutcomeConfig?.label}</>
-                ) : (
-                  "Select an outcome above"
-                )}
-              </Button>
             </Card.Body>
           </Card>
         </Col>

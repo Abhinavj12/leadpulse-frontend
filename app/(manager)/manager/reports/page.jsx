@@ -12,6 +12,7 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import api from "@/lib/api/axios";
 import { ToastNotification } from "@/components/ui/ToastNotification";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 export default function ReportsPage() {
   const [clients, setClients] = useState([]);
@@ -23,6 +24,12 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
+
+  // Pagination states
+  const [seqPage, setSeqPage] = useState(1);
+  const [seqPageSize, setSeqPageSize] = useState(10);
+  const [campPage, setCampPage] = useState(1);
+  const [campPageSize, setCampPageSize] = useState(10);
 
   useEffect(() => {
     const loadInitial = async () => {
@@ -39,6 +46,8 @@ export default function ReportsPage() {
   }, []);
 
   useEffect(() => {
+    setSeqPage(1);
+    setCampPage(1);
     if (!selectedClientId) {
       setSequences([]);
       setCampaigns([]);
@@ -59,6 +68,15 @@ export default function ReportsPage() {
     };
     loadClientData();
   }, [selectedClientId]);
+
+  // Sliced arrays and pagination calculations
+  const seqTotalItems = sequences.length;
+  const seqTotalPages = Math.ceil(seqTotalItems / seqPageSize) || 1;
+  const paginatedSequences = sequences.slice((seqPage - 1) * seqPageSize, seqPage * seqPageSize);
+
+  const campTotalItems = campaigns.length;
+  const campTotalPages = Math.ceil(campTotalItems / campPageSize) || 1;
+  const paginatedCampaigns = campaigns.slice((campPage - 1) * campPageSize, campPage * campPageSize);
 
   const downloadReport = async (url, filename) => {
     try {
@@ -114,7 +132,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sequences.length > 0 ? sequences.map(seq => (
+                  {paginatedSequences.length > 0 ? paginatedSequences.map(seq => (
                     <tr key={seq.id}>
                       <td className="align-middle fw-medium">{seq.name}</td>
                       <td className="align-middle">{seq.pricingModel.replace('_', ' ')}</td>
@@ -129,7 +147,7 @@ export default function ReportsPage() {
                         </Button>
                         <Button 
                           variant="outline-success" 
-                          size="sm"
+                          size="sm" 
                           onClick={() => downloadReport(`/reports/sequences/${seq.id}/excel`, `Sequence_Report_${seq.name.replace(/\s+/g, '_')}.xlsx`)}
                         >
                           <i className="bi bi-file-excel me-1"></i> Excel
@@ -142,6 +160,18 @@ export default function ReportsPage() {
                 </tbody>
               </Table>
             </Card.Body>
+            <PaginationControl
+              currentPage={seqPage}
+              totalPages={seqTotalPages}
+              totalItems={seqTotalItems}
+              pageSize={seqPageSize}
+              onPageChange={setSeqPage}
+              onPageSizeChange={(size) => {
+                setSeqPageSize(size);
+                setSeqPage(1);
+              }}
+              itemName="sequence reports"
+            />
           </Card>
 
           <Card className="border">
@@ -157,7 +187,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {campaigns.length > 0 ? campaigns.map(camp => (
+                  {paginatedCampaigns.length > 0 ? paginatedCampaigns.map(camp => (
                     <tr key={camp.id}>
                       <td className="align-middle fw-medium">{camp.name}</td>
                       <td className="align-middle text-capitalize">{camp.type}</td>
@@ -173,7 +203,7 @@ export default function ReportsPage() {
                         </Button>
                         <Button 
                           variant="outline-success" 
-                          size="sm"
+                          size="sm" 
                           onClick={() => downloadReport(`/reports/campaigns/${camp.id}/excel`, `Campaign_Leads_${camp.name.replace(/\s+/g, '_')}.xlsx`)}
                         >
                           <i className="bi bi-file-excel me-1"></i> Excel
@@ -186,6 +216,18 @@ export default function ReportsPage() {
                 </tbody>
               </Table>
             </Card.Body>
+            <PaginationControl
+              currentPage={campPage}
+              totalPages={campTotalPages}
+              totalItems={campTotalItems}
+              pageSize={campPageSize}
+              onPageChange={setCampPage}
+              onPageSizeChange={(size) => {
+                setCampPageSize(size);
+                setCampPage(1);
+              }}
+              itemName="campaign reports"
+            />
           </Card>
         </>
       )}

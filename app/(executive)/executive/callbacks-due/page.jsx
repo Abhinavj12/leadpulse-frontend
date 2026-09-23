@@ -18,12 +18,15 @@ import AlertMessage from "@/components/ui/AlertMessage";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage } from "@/lib/auth/auth";
 import { isoDay, todayIso, formatDay } from "@/lib/executive/dateOnly";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 
 export default function ExecutiveCallbacksDuePage() {
   const [rows, setRows] = useState([]);
   const [skippedCampaigns, setSkippedCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = async () => {
     setLoading(true);
@@ -88,8 +91,14 @@ export default function ExecutiveCallbacksDuePage() {
     load();
   }, []);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [pageSize]);
+
   const overdueCount = useMemo(() => rows.filter((r) => r.overdue).length, [rows]);
   const dueTodayCount = useMemo(() => rows.filter((r) => r.dueToday).length, [rows]);
+
+  const paginatedList = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   if (loading) {
     return (
@@ -152,82 +161,93 @@ export default function ExecutiveCallbacksDuePage() {
             <div className="small">Every promise you've made is either resolved or still in the future.</div>
           </Card.Body>
         ) : (
-          <Table responsive hover className="mb-0 align-middle">
-            <thead style={{ background: "#f8f9fa" }}>
-              <tr className="text-secondary small text-uppercase">
-                <th className="border-0 ps-4">Lead</th>
-                <th className="border-0">Campaign</th>
-                <th className="border-0">Company</th>
-                <th className="border-0">Phone</th>
-                <th className="border-0">Due</th>
-                <th className="border-0">Notes from Last Call</th>
-                <th className="border-0 pe-4 text-end">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((cb) => {
-                const campaignActive = cb.campaignStatus === "active";
-                const callLink = `/executive/campaigns/${cb.campaignId}/dialer?leadId=${cb.campaignLeadId}`;
-                return (
-                  <tr key={cb.campaignLeadId} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <td className="ps-4">
-                      <div className="fw-bold text-dark">{cb.leadName}</div>
-                    </td>
-                    <td>
-                      <Link href={`/executive/campaigns/${cb.campaignId}`} className="text-decoration-none fw-medium">
-                        {cb.campaignName}
-                      </Link>
-                    </td>
-                    <td className="text-muted fw-medium">{cb.company || "—"}</td>
-                    <td>
-                      {cb.phone ? (
-                        <a href={`tel:${cb.phone}`} className="text-decoration-none text-dark fw-medium">
-                          <i className="bi bi-telephone me-1 text-primary"></i>{cb.phone}
-                        </a>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className={`fw-bold ${cb.overdue ? "text-danger" : "text-warning"}`}>
-                        {formatDay(cb.day)}
-                      </div>
-                      {cb.overdue ? (
-                        <span className="badge bg-danger rounded-pill small">OVERDUE</span>
-                      ) : (
-                        <span className="badge bg-warning text-dark rounded-pill small">DUE TODAY</span>
-                      )}
-                    </td>
-                    <td className="text-muted small" style={{ maxWidth: "220px" }}>
-                      <span className="text-truncate d-block">{cb.notes || "No notes"}</span>
-                    </td>
-                    <td className="pe-4 text-end">
-                      {campaignActive ? (
-                        <Link href={callLink} className="btn btn-outline-danger btn-sm rounded-pill px-3 fw-bold">
-                          <i className="bi bi-telephone me-1"></i>Call Now
+          <>
+            <Table responsive hover className="mb-0 align-middle">
+              <thead style={{ background: "#f8f9fa" }}>
+                <tr className="text-secondary small text-uppercase">
+                  <th className="border-0 ps-4">Lead</th>
+                  <th className="border-0">Campaign</th>
+                  <th className="border-0">Company</th>
+                  <th className="border-0">Phone</th>
+                  <th className="border-0">Due</th>
+                  <th className="border-0">Notes from Last Call</th>
+                  <th className="border-0 pe-4 text-end">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedList.map((cb) => {
+                  const campaignActive = cb.campaignStatus === "active";
+                  const callLink = `/executive/campaigns/${cb.campaignId}/dialer?leadId=${cb.campaignLeadId}`;
+                  return (
+                    <tr key={cb.campaignLeadId} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                      <td className="ps-4">
+                        <div className="fw-bold text-dark">{cb.leadName}</div>
+                      </td>
+                      <td>
+                        <Link href={`/executive/campaigns/${cb.campaignId}`} className="text-decoration-none fw-medium">
+                          {cb.campaignName}
                         </Link>
-                      ) : (
-                        <OverlayTrigger
-                          placement="left"
-                          overlay={
-                            <Tooltip>
-                              This campaign is {cb.campaignStatus} — it must be active again before you can call.
-                            </Tooltip>
-                          }
-                        >
-                          <span className="d-inline-block">
-                            <Button variant="outline-secondary" size="sm" className="rounded-pill px-3 fw-bold" disabled style={{ pointerEvents: "none" }}>
-                              <i className="bi bi-telephone me-1"></i>Call Now
-                            </Button>
-                          </span>
-                        </OverlayTrigger>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+                      </td>
+                      <td className="text-muted fw-medium">{cb.company || "—"}</td>
+                      <td>
+                        {cb.phone ? (
+                          <a href={`tel:${cb.phone}`} className="text-decoration-none text-dark fw-medium">
+                            <i className="bi bi-telephone me-1 text-primary"></i>{cb.phone}
+                          </a>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className={`fw-bold ${cb.overdue ? "text-danger" : "text-warning"}`}>
+                          {formatDay(cb.day)}
+                        </div>
+                        {cb.overdue ? (
+                          <span className="badge bg-danger rounded-pill small">OVERDUE</span>
+                        ) : (
+                          <span className="badge bg-warning text-dark rounded-pill small">DUE TODAY</span>
+                        )}
+                      </td>
+                      <td className="text-muted small" style={{ maxWidth: "220px" }}>
+                        <span className="text-truncate d-block">{cb.notes || "No notes"}</span>
+                      </td>
+                      <td className="pe-4 text-end">
+                        {campaignActive ? (
+                          <Link href={callLink} className="btn btn-outline-danger btn-sm rounded-pill px-3 fw-bold">
+                            <i className="bi bi-telephone me-1"></i>Call Now
+                          </Link>
+                        ) : (
+                          <OverlayTrigger
+                            placement="left"
+                            overlay={
+                              <Tooltip>
+                                This campaign is {cb.campaignStatus} — it must be active again before you can call.
+                              </Tooltip>
+                            }
+                          >
+                            <span className="d-inline-block">
+                              <Button variant="outline-secondary" size="sm" className="rounded-pill px-3 fw-bold" disabled style={{ pointerEvents: "none" }}>
+                                <i className="bi bi-telephone me-1"></i>Call Now
+                              </Button>
+                            </span>
+                          </OverlayTrigger>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+            <PaginationControl
+              currentPage={currentPage}
+              totalPages={Math.max(1, Math.ceil(rows.length / pageSize))}
+              totalItems={rows.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              itemName="callbacks"
+            />
+          </>
         )}
       </Card>
     </AppLayout>

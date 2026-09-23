@@ -17,6 +17,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AlertMessage from "@/components/ui/AlertMessage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { PaginationControl } from "@/components/ui/PaginationControl";
 import api from "@/lib/api/axios";
 import { getApiErrorMessage, getFieldErrors } from "@/lib/auth/auth";
 
@@ -374,6 +375,13 @@ export default function ExecutivesPage() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [pageSize]);
+
   // Create executive modal
   const [showModal, setShowModal] = useState(false);
   const [formErrors, setFormErrors] = useState({});
@@ -496,6 +504,8 @@ export default function ExecutivesPage() {
 
   const confirmProps = getConfirmDialogProps();
 
+  const paginatedList = executives.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <AppLayout role="manager">
       {/* ── Page Header ── */}
@@ -562,7 +572,7 @@ export default function ExecutivesPage() {
                 </tr>
               </thead>
               <tbody>
-                {executives.length > 0 ? executives.map(exec => (
+                {executives.length > 0 ? paginatedList.map(exec => (
                   <tr key={exec.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
                     <td className="px-4 py-3">
                       <div className="d-flex align-items-center gap-3">
@@ -628,7 +638,11 @@ export default function ExecutivesPage() {
                           >
                             <i className="bi bi-three-dots-vertical"></i>
                           </Dropdown.Toggle>
-                          <Dropdown.Menu className="border-0 shadow-sm rounded-3">
+                          <Dropdown.Menu 
+                            renderOnMount 
+                            popperConfig={{ strategy: 'fixed' }} 
+                            className="border-0 shadow-sm rounded-3"
+                          >
                             <Dropdown.Item
                               onClick={() => openConfirmDialog(exec, "reset-password")}
                               className="fw-medium text-dark py-2"
@@ -662,6 +676,14 @@ export default function ExecutivesPage() {
             </Table>
           )}
         </Card.Body>
+        <PaginationControl
+          currentPage={currentPage}
+          totalPages={Math.max(1, Math.ceil(executives.length / pageSize))}
+          totalItems={executives.length}
+          onPageChange={setCurrentPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       </Card>
 
       {/* ── Performance Drawer ── */}

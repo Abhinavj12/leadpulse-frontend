@@ -7,6 +7,7 @@ import Button from "react-bootstrap/Button";
 import Col from "react-bootstrap/Col";
 import Form from "react-bootstrap/Form";
 import Row from "react-bootstrap/Row";
+import Script from "next/script";
 
 import AuthShell from "@/components/auth/AuthShell";
 import PasswordField from "@/components/auth/PasswordField";
@@ -45,7 +46,7 @@ export default function RegisterPage() {
     setServerError("");
   };
 
-  const handleSubmit = async (event) => {
+    const handleSubmit = async (event) => {
     event.preventDefault();
     setErrors({});
     setServerError("");
@@ -65,27 +66,51 @@ export default function RegisterPage() {
     }
 
     setSubmitting(true);
-    try {
-      await register({
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        email: form.email.trim().toLowerCase(),
-        password: form.password,
-        confirmPassword: form.confirmPassword
-      });
 
-      const loggedInUser = await login({
-        email: form.email.trim().toLowerCase(),
-        password: form.password
-      });
-
-      redirectForRole(router, loggedInUser.role);
-    } catch (error) {
-      setErrors(getFieldErrors(error));
-      setServerError(getApiErrorMessage(error, "Unable to create the account."));
-    } finally {
+    if (!window.grecaptcha) {
+      setServerError("reCAPTCHA failed to load. Please refresh and try again.");
       setSubmitting(false);
+      return;
     }
+
+    window.grecaptcha.ready(() => {
+      window.grecaptcha
+        .execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'register' })
+        .then(async (token) => {
+          try {
+            await register({
+              firstName: form.firstName.trim(),
+              lastName: form.lastName.trim(),
+              email: form.email.trim().toLowerCase(),
+              password: form.password,
+              confirmPassword: form.confirmPassword,
+              recaptchaToken: token // Passed to the register API
+            });
+
+            // Generate a fresh reCAPTCHA token for the login step
+            const loginToken = await window.grecaptcha.execute(
+              process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, 
+              { action: 'login_after_register' }
+            );
+
+            const loggedInUser = await login({
+              email: form.email.trim().toLowerCase(),
+              password: form.password,
+              recaptchaToken: loginToken
+            });
+
+            redirectForRole(router, loggedInUser.role);
+          } catch (error) {
+            setErrors(getFieldErrors(error));
+            setServerError(getApiErrorMessage(error, "Unable to create the account."));
+            setSubmitting(false);
+          }
+        })
+        .catch(() => {
+          setServerError("Failed to verify reCAPTCHA.");
+          setSubmitting(false);
+        });
+    });
   };
 
   return (
@@ -98,6 +123,10 @@ export default function RegisterPage() {
         </span>
       }
     >
+       <Script
+        src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`}
+        strategy="lazyOnload"
+      />
       <AlertMessage message={serverError} />
 
       <Form onSubmit={handleSubmit} noValidate>

@@ -184,7 +184,7 @@ export default function ManagerDashboardPage() {
 
           {/* Recent Campaigns Table & Recent Lead Imports */}
           <Row className="g-4 mb-4">
-            <Col xs={12} lg={7}>
+            <Col xs={12}>
               <Card className="border-0 shadow-sm rounded-3 h-100">
                 <Card.Header className="bg-white border-bottom py-3 d-flex align-items-center justify-content-between">
                   <div className="d-flex align-items-center">
@@ -210,136 +210,90 @@ export default function ManagerDashboardPage() {
                       {data.recentCampaigns?.length > 0 ? (
                         data.recentCampaigns.map((cmp) => (
                           <tr key={cmp.id}>
-                            <td className="px-3 py-2">
-                              <Link href={`/manager/campaigns/${cmp.id}`} className="fw-medium text-dark text-decoration-none">
-                                {cmp.name}
-                              </Link>
-                            </td>
-                            <td className="px-3 py-2 text-muted small">{cmp.clientName}</td>
-                            <td className="px-3 py-2 text-center">
-                              <Badge bg={cmp.type === "email" ? "info" : "secondary"} text={cmp.type === "email" ? "dark" : undefined}>
-                                {cmp.type === "email" ? "Email" : "Call"}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-center fw-medium">{cmp.audienceCount}</td>
-                            <td className="px-3 py-2 text-end">{renderStatusBadge(cmp.status)}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan="5" className="text-center text-muted py-4 small">
-                            No recent campaigns found.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </Table>
-                </Card.Body>
-              </Card>
-            </Col>
-
-            <Col xs={12} lg={5}>
-              <Card className="border-0 shadow-sm rounded-3 h-100">
-                <Card.Header className="bg-white border-bottom py-3 d-flex align-items-center justify-content-between">
-                  <div className="d-flex align-items-center">
-                    <i className="bi bi-cloud-arrow-up text-primary me-2 fs-5"></i>
-                    <h6 className="mb-0 fw-bold">Recent Lead Imports</h6>
-                  </div>
-                  <Link href="/manager/lead-lists" className="small text-decoration-none fw-semibold">
-                    Manage Lists <i className="bi bi-arrow-right"></i>
-                  </Link>
-                </Card.Header>
-                <Card.Body className="p-0">
-                  <Table hover responsive className="mb-0 align-middle">
-                    <thead className="bg-light text-muted">
-                      <tr>
-                        <th className="px-3 py-2 border-bottom-0 small">Filename</th>
-                        <th className="px-3 py-2 border-bottom-0 small text-center">Progress</th>
-                        <th className="px-3 py-2 border-bottom-0 small text-end">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.recentImports?.length > 0 ? (
-                        data.recentImports.map((job) => (
-                          <tr key={job.id}>
-                            <td className="px-3 py-2">
-                              <div className="fw-medium text-dark text-truncate" style={{ maxWidth: "160px" }} title={job.originalFilename}>
-                                {job.originalFilename}
-                              </div>
-                              <div className="text-muted small" style={{ fontSize: "0.75rem" }}>
-                                {job.clientName}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-center" style={{ width: "120px" }}>
-                              <div className="small fw-semibold mb-1">{job.progressPercentage}%</div>
-                              <ProgressBar
-                                now={job.progressPercentage}
-                                variant={job.status === "failed" ? "danger" : "success"}
-                                style={{ height: "5px" }}
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-end">{renderStatusBadge(job.status)}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan="3" className="text-center text-muted py-4 small">
-                            No recent lead imports.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </Table>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
-
-          {/* Executive Utilization */}
-          <Card className="border-0 shadow-sm rounded-3">
-            <Card.Header className="bg-white border-bottom py-3 d-flex align-items-center">
-              <i className="bi bi-person-badge text-primary me-2 fs-5"></i>
-              <h6 className="mb-0 fw-bold">Executive Workload & Utilization</h6>
-            </Card.Header>
-            <Card.Body className="p-0">
-              <Table hover responsive className="mb-0 align-middle">
-                <thead className="bg-light text-muted">
-                  <tr>
-                    <th className="px-4 py-3 border-bottom-0">Executive Name</th>
-                    <th className="px-4 py-3 border-bottom-0 text-end">Pending Queue Leads</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.executiveUtilization?.length > 0 ? (
-                    data.executiveUtilization.map((exec) => (
-                      <tr key={exec.id}>
-                        <td className="px-4 py-3">
-                          <div className="d-flex align-items-center">
-                            <div className="bg-secondary bg-opacity-10 text-secondary rounded-circle d-flex align-items-center justify-content-center me-3 fw-bold" style={{ width: "38px", height: "38px" }}>
-                              {exec.firstName?.[0]}{exec.lastName?.[0]}
-                            </div>
-                            <span className="fw-medium text-dark">{exec.firstName} {exec.lastName}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-end">
-                          <Badge bg="primary" className="bg-opacity-10 text-primary px-3 py-2 rounded-pill fw-bold">
-                            {exec.pendingLeads} Leads
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan="2" className="text-center text-muted py-4">
-                        <i className="bi bi-inbox fs-2 d-block mb-2 opacity-50"></i>
-                        No active executive call assignments found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </Table>
-            </Card.Body>
-          </Card>
+                             <td className="px-3 py-2">
+                               <Link href={`/manager/campaigns/${cmp.id}`} className="fw-medium text-dark text-decoration-none">
+                                 {cmp.name}
+                               </Link>
+                             </td>
+                             <td className="px-3 py-2 text-muted small">{cmp.clientName}</td>
+                             <td className="px-3 py-2 text-center">
+                               <Badge bg={cmp.type === "email" ? "info" : "secondary"} text={cmp.type === "email" ? "dark" : undefined}>
+                                 {cmp.type === "email" ? "Email" : "Call"}
+                               </Badge>
+                             </td>
+                             <td className="px-3 py-2 text-center fw-medium">{cmp.audienceCount}</td>
+                             <td className="px-3 py-2 text-end">{renderStatusBadge(cmp.status)}</td>
+                           </tr>
+                         ))
+                       ) : (
+                         <tr>
+                           <td colSpan="5" className="text-center text-muted py-4 small">
+                             No recent campaigns found.
+                           </td>
+                         </tr>
+                       )}
+                     </tbody>
+                   </Table>
+                 </Card.Body>
+               </Card>
+             </Col>
+ 
+             <Col xs={12}>
+               <Card className="border-0 shadow-sm rounded-3 h-100">
+                 <Card.Header className="bg-white border-bottom py-3 d-flex align-items-center justify-content-between">
+                   <div className="d-flex align-items-center">
+                     <i className="bi bi-cloud-arrow-up text-primary me-2 fs-5"></i>
+                     <h6 className="mb-0 fw-bold">Recent Lead Imports</h6>
+                   </div>
+                   <Link href="/manager/lead-lists" className="small text-decoration-none fw-semibold">
+                     Manage Lists <i className="bi bi-arrow-right"></i>
+                   </Link>
+                 </Card.Header>
+                 <Card.Body className="p-0">
+                   <Table hover responsive className="mb-0 align-middle">
+                     <thead className="bg-light text-muted">
+                       <tr>
+                         <th className="px-3 py-2 border-bottom-0 small">Filename</th>
+                         <th className="px-3 py-2 border-bottom-0 small text-center">Progress</th>
+                         <th className="px-3 py-2 border-bottom-0 small text-end">Status</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {data.recentImports?.length > 0 ? (
+                         data.recentImports.map((job) => (
+                           <tr key={job.id}>
+                             <td className="px-3 py-2">
+                               <div className="fw-medium text-dark text-truncate" style={{ maxWidth: "160px" }} title={job.originalFilename}>
+                                 {job.originalFilename}
+                               </div>
+                               <div className="text-muted small" style={{ fontSize: "0.75rem" }}>
+                                 {job.clientName}
+                               </div>
+                             </td>
+                             <td className="px-3 py-2 text-center" style={{ width: "120px" }}>
+                               <div className="small fw-semibold mb-1">{job.progressPercentage}%</div>
+                               <ProgressBar
+                                 now={job.progressPercentage}
+                                 variant={job.status === "failed" ? "danger" : "success"}
+                                 style={{ height: "5px" }}
+                               />
+                             </td>
+                             <td className="px-3 py-2 text-end">{renderStatusBadge(job.status)}</td>
+                           </tr>
+                         ))
+                       ) : (
+                         <tr>
+                           <td colSpan="3" className="text-center text-muted py-4 small">
+                             No recent lead imports.
+                           </td>
+                         </tr>
+                       )}
+                     </tbody>
+                   </Table>
+                 </Card.Body>
+               </Card>
+             </Col>
+           </Row>
         </>
       ) : null}
     </AppLayout>
