@@ -60,6 +60,8 @@ export function AuthProvider({ children }) {
       if (getAccessToken()) {
         await authApi.logout();
       }
+    } catch (err) {
+      // Ignore errors (e.g. 401 if already expired), still clear local session
     } finally {
       clearSession();
     }

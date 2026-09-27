@@ -110,7 +110,7 @@ export default function RegisterPage() {
           setServerError("Failed to verify reCAPTCHA.");
           setSubmitting(false);
         });
-    });
+    }); 
   };
 
   return (

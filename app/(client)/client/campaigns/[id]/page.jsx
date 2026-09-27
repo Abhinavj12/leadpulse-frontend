@@ -8,6 +8,9 @@ import Col from "react-bootstrap/Col";
 import Badge from "react-bootstrap/Badge";
 import Button from "react-bootstrap/Button";
 import ProgressBar from "react-bootstrap/ProgressBar";
+import Collapse from "react-bootstrap/Collapse";
+import Table from "react-bootstrap/Table";
+import Spinner from "react-bootstrap/Spinner";
 
 import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
@@ -26,14 +29,21 @@ export default function ClientCampaignDetailPage({ params }) {
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
+  const [qualifiedLeads, setQualifiedLeads] = useState([]);
+  const [loadingQLeads, setLoadingQLeads] = useState(false);
+  const [showQLeads, setShowQLeads] = useState(true);
 
   useEffect(() => {
     let mounted = true;
     const fetchCampaignDetail = async () => {
       try {
-        const res = await api.get(`/reports/campaigns/${campaignId}`);
+        const [reportRes, qLeadsRes] = await Promise.all([
+          api.get(`/reports/campaigns/${campaignId}`),
+          api.get(`/portal/campaigns/${campaignId}/qualified-leads`).catch(() => ({ data: { data: [] } }))
+        ]);
         if (mounted) {
-          setReport(res.data.data);
+          setReport(reportRes.data.data);
+          setQualifiedLeads(qLeadsRes.data.data || []);
           setError("");
         }
       } catch (err) {
@@ -78,9 +88,15 @@ export default function ClientCampaignDetailPage({ params }) {
   const isEmail = campaign.type?.toLowerCase() === 'email';
 
   const audienceCount = metrics.audienceSize ?? metrics.audience ?? campaign.audience ?? 0;
-  const openRate = rates.openRate ?? metrics.openRate ?? 0;
+  
+  // Patch backend logic: implicit opens mean opened must be >= clicked
+  const clicked = metrics.clicked || 0;
+  const opened = Math.max(metrics.opened || 0, clicked);
+  const base = metrics.delivered > 0 ? metrics.delivered : (metrics.sent || 0);
+  
+  const openRate = base ? ((opened / base) * 100).toFixed(2) : (rates.openRate ?? metrics.openRate ?? 0);
   const ctr = rates.clickThroughRate ?? metrics.ctr ?? 0;
-  const ctor = rates.clickToOpenRate ?? metrics.ctor ?? 0;
+  const ctor = opened ? ((clicked / opened) * 100).toFixed(2) : (rates.clickToOpenRate ?? metrics.ctor ?? 0);
   const bounceRate = rates.bounceRate ?? metrics.bounceRate ?? 0;
   const unsubscribeRate = rates.unsubscribeRate ?? metrics.unsubscribeRate ?? 0;
 
@@ -170,7 +186,7 @@ export default function ClientCampaignDetailPage({ params }) {
                 {isEmail ? "Emails Opened" : "Calls Answered"}
               </div>
               <div className="display-6 fw-bold text-warning">
-                {isEmail ? (metrics.opened || 0) : (metrics.outcomes?.Answered ?? metrics.funnel?.reached ?? 0)}
+                {isEmail ? opened : (metrics.outcomes?.Answered ?? metrics.funnel?.reached ?? 0)}
               </div>
               <div className="text-muted small mt-1">
                 {isEmail ? `Open Rate: ${openRate}%` : "Direct connections"}
@@ -213,7 +229,7 @@ export default function ClientCampaignDetailPage({ params }) {
                 <div className="p-3 bg-light rounded-3">
                   <div className="d-flex justify-content-between fw-bold mb-1">
                     <span>Unique Opens (Rate: {openRate}%)</span>
-                    <span>{metrics.opened || 0}</span>
+                    <span>{opened}</span>
                   </div>
                   <ProgressBar variant="info" now={openRate} />
                 </div>
@@ -230,7 +246,7 @@ export default function ClientCampaignDetailPage({ params }) {
               <Col md={6}>
                 <div className="p-3 bg-light rounded-3">
                   <div className="d-flex justify-content-between fw-bold mb-1">
-                    <span>Click-to-Open (CTOR: {ctor}%)</span>
+                    <span>Click-to-Open Rate (CTOR)</span>
                     <span>{ctor}%</span>
                   </div>
                   <ProgressBar variant="success" now={ctor} />
@@ -323,6 +339,83 @@ export default function ClientCampaignDetailPage({ params }) {
               </Col>
             </Row>
           </Card.Body>
+        </Card>
+      )}
+
+      {/* QUALIFIED & CONVERTED LEADS SECTION */}
+      {!campaign.sequenceId && (
+        <Card className="border-0 shadow-sm rounded-3 mb-4">
+          <Card.Header
+            className="bg-white border-0 pt-3 px-4 pb-3 d-flex justify-content-between align-items-center"
+            style={{ cursor: "pointer" }}
+            onClick={() => setShowQLeads(v => !v)}
+          >
+            <div className="d-flex align-items-center gap-2">
+              <div className="bg-success bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style={{ width: 36, height: 36 }}>
+                <i className="bi bi-person-check-fill text-success fs-6" />
+              </div>
+              <div>
+                <div className="fw-bold text-dark">Qualified &amp; Converted Leads</div>
+                <div className="text-muted small">Full contact details for leads that reached Qualified or Converted status in this campaign</div>
+              </div>
+              {qualifiedLeads.length > 0 && (
+                <Badge bg="success" className="ms-2 px-2 py-1">{qualifiedLeads.length}</Badge>
+              )}
+            </div>
+            <i className={`bi bi-chevron-${showQLeads ? "up" : "down"} text-muted`} />
+          </Card.Header>
+          <Collapse in={showQLeads}>
+            <div>
+              <Card.Body className="p-4 pt-0">
+                {loadingQLeads ? (
+                  <div className="text-center py-4">
+                    <Spinner animation="border" size="sm" className="text-success me-2" />
+                    <span className="text-muted">Loading leads...</span>
+                  </div>
+                ) : qualifiedLeads.length === 0 ? (
+                  <div className="text-center py-4 text-muted">
+                    <i className="bi bi-inbox fs-3 d-block mb-2 opacity-50" />
+                    No leads have reached Qualified or Converted status in this campaign yet.
+                  </div>
+                ) : (
+                  <Table responsive hover className="mb-0 align-middle">
+                    <thead className="bg-light">
+                      <tr>
+                        <th className="py-3 ps-3">Name</th>
+                        <th className="py-3">Company</th>
+                        <th className="py-3">Job Title</th>
+                        <th className="py-3">Email</th>
+                        <th className="py-3">Phone</th>
+                        <th className="py-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {qualifiedLeads.map((lead) => (
+                        <tr key={lead.id}>
+                          <td className="ps-3 fw-semibold text-dark">
+                            {lead.firstName} {lead.lastName}
+                          </td>
+                          <td className="text-muted">{lead.company || "—"}</td>
+                          <td className="text-muted small">{lead.jobTitle || "—"}</td>
+                          <td>
+                            <a href={`mailto:${lead.email}`} className="text-decoration-none small font-monospace">
+                              {lead.email}
+                            </a>
+                          </td>
+                          <td className="small text-muted">{lead.phone || "—"}</td>
+                          <td className="text-center">
+                            <Badge bg={lead.status?.toUpperCase() === "CONVERTED" ? "success" : "info"} className="text-uppercase px-2 py-1">
+                              {lead.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                )}
+              </Card.Body>
+            </div>
+          </Collapse>
         </Card>
       )}
 

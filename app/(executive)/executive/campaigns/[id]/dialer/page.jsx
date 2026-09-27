@@ -98,7 +98,6 @@ const OUTCOMES = [
 
 // Values MUST match backend: z.enum(['Contacted', 'Qualified'])
 const LEAD_STATUS_OPTIONS = [
-  { value: "", label: "— No status update —" },
   { value: "Contacted", label: "Contacted" },
   { value: "Qualified", label: "Qualified" },
 ];
@@ -258,7 +257,7 @@ export default function ExecutiveDialer() {
   const [notes, setNotes] = useState("");
   const [followUpDate, setFollowUpDate] = useState("");
   const [callDuration, setCallDuration] = useState("");
-  const [leadStatusUpdate, setLeadStatusUpdate] = useState("");
+  const [leadStatusUpdate, setLeadStatusUpdate] = useState("Contacted");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -293,7 +292,7 @@ export default function ExecutiveDialer() {
     setNotes("");
     setFollowUpDate("");
     setCallDuration("");
-    setLeadStatusUpdate("");
+    setLeadStatusUpdate("Contacted");
     setSubmitError("");
     setSuccessMessage("");
     setCallStarted(false);
@@ -359,6 +358,12 @@ export default function ExecutiveDialer() {
     const outcome = OUTCOMES.find(o => o.value === selectedOutcome);
     if (outcome?.needsCallback && !followUpDate) {
       setSubmitError("Please select a follow-up date for the callback.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (selectedOutcome === "Converted" && !notes.trim()) {
+      setSubmitError("Notes are required when logging a conversion so the manager can review it.");
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -613,6 +618,9 @@ export default function ExecutiveDialer() {
                         role="button"
                         onClick={() => {
                           setSelectedOutcome(outcome.value);
+                          if (outcome.needsStatus) {
+                            setLeadStatusUpdate("Contacted");
+                          }
                           setSubmitError("");
                         }}
                         className={`rounded-3 p-3 border transition d-flex align-items-center gap-3 cursor-pointer`}
@@ -714,8 +722,9 @@ export default function ExecutiveDialer() {
 
                       {/* Notes */}
                       <Form.Group>
-                        <Form.Label className="fw-bold small text-secondary">
-                          <i className="bi bi-chat-left-text me-1"></i>Notes (optional)
+                        <Form.Label className={selectedOutcome === "Converted" ? "fw-bold small text-danger" : "fw-bold small text-secondary"}>
+                          <i className="bi bi-chat-left-text me-1"></i>
+                          {selectedOutcome === "Converted" ? "Notes (Required for Conversions) *" : "Notes (optional)"}
                         </Form.Label>
                         <Form.Control
                           as="textarea"

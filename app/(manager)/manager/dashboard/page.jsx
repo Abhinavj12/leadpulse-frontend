@@ -32,7 +32,58 @@ export default function ManagerDashboardPage() {
           ? `/reports/agency-dashboard?clientId=${selectedClientId}`
           : "/reports/agency-dashboard";
         const response = await api.get(url);
-        if (mounted) setData(response.data.data);
+        
+        let dashboardData = response.data.data || {};
+
+        // --- FRONTEND PATCH: Bypass faulty backend revenue calculation ---
+        try {
+          const seqUrl = selectedClientId ? `/sequences?clientId=${selectedClientId}` : "/sequences";
+          const cmpUrl = selectedClientId ? `/campaigns?clientId=${selectedClientId}` : "/campaigns";
+          
+          const [seqListRes, cmpRes] = await Promise.all([
+            api.get(seqUrl).catch(() => ({ data: { data: [] } })),
+            api.get(cmpUrl).catch(() => ({ data: { data: [] } }))
+          ]);
+
+          // The list API doesn't include billing, so we must fetch the rollup for each sequence
+          const seqDetailsRes = await Promise.all(
+            (seqListRes.data.data || []).map(seq => 
+              api.get(`/sequences/${seq.id}`).catch(() => ({ data: { data: null } }))
+            )
+          );
+
+          // Fetch standalone campaign detailed reports to get their lifetime billing
+          const cmpDetailsRes = await Promise.all(
+            (cmpRes.data.data || [])
+              .filter(cmp => !cmp.sequenceId) // only standalone
+              .map(cmp => api.get(`/reports/campaigns/${cmp.id}`).catch(() => ({ data: { data: null } })))
+          );
+
+          let trueRevenue = 0;
+          
+          // Add sequence lifetime accrued revenue
+          seqDetailsRes.forEach(res => {
+            const seq = res.data?.data;
+            if (seq && seq.billing) {
+              trueRevenue += Number(seq.billing.amountAccrued || seq.billing.retainerAmount || 0);
+            }
+          });
+
+          // Add standalone campaign lifetime accrued revenue
+          cmpDetailsRes.forEach(res => {
+            const report = res.data?.data;
+            if (report && report.billing) {
+              trueRevenue += Number(report.billing.amountAccrued || report.billing.retainerAmount || 0);
+            }
+          });
+
+          dashboardData.estimatedMonthlyRevenue = trueRevenue;
+        } catch (patchErr) {
+          console.warn("Frontend revenue patch failed, falling back to backend data", patchErr);
+        }
+        // ---------------------------------------------------------------
+
+        if (mounted) setData(dashboardData);
       } catch (requestError) {
         if (mounted) setError(getApiErrorMessage(requestError, "Unable to load dashboard metrics."));
       } finally {
@@ -172,7 +223,7 @@ export default function ManagerDashboardPage() {
                     <i className="bi bi-currency-dollar fs-3"></i>
                   </div>
                   <div>
-                    <div className="text-uppercase text-muted small fw-bold tracking-wide">Est. Monthly Revenue</div>
+                    <div className="text-uppercase text-muted small fw-bold tracking-wide">Total Accrued Revenue</div>
                     <div className="fs-3 fw-bolder text-dark">
                       ${(data.estimatedMonthlyRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>

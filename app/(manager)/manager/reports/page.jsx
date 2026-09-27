@@ -1,10 +1,13 @@
 "use client";
+import React from "react";
 
 import { useEffect, useState } from "react";
 import Card from "react-bootstrap/Card";
 import Table from "react-bootstrap/Table";
 import Form from "react-bootstrap/Form";
 import Button from "react-bootstrap/Button";
+import Collapse from "react-bootstrap/Collapse";
+import Badge from "react-bootstrap/Badge";
 
 import AppLayout from "@/components/layout/AppLayout";
 import PageHeader from "@/components/layout/PageHeader";
@@ -24,12 +27,12 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toast, setToast] = useState({ show: false, message: "", variant: "danger" });
+  
+  const [expandedRows, setExpandedRows] = useState({});
 
   // Pagination states
-  const [seqPage, setSeqPage] = useState(1);
-  const [seqPageSize, setSeqPageSize] = useState(10);
-  const [campPage, setCampPage] = useState(1);
-  const [campPageSize, setCampPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     const loadInitial = async () => {
@@ -46,8 +49,8 @@ export default function ReportsPage() {
   }, []);
 
   useEffect(() => {
-    setSeqPage(1);
-    setCampPage(1);
+    setPage(1);
+    setExpandedRows({});
     if (!selectedClientId) {
       setSequences([]);
       setCampaigns([]);
@@ -69,16 +72,31 @@ export default function ReportsPage() {
     loadClientData();
   }, [selectedClientId]);
 
-  // Sliced arrays and pagination calculations
-  const seqTotalItems = sequences.length;
-  const seqTotalPages = Math.ceil(seqTotalItems / seqPageSize) || 1;
-  const paginatedSequences = sequences.slice((seqPage - 1) * seqPageSize, seqPage * seqPageSize);
+  // Unified list mapping
+  const unifiedList = [
+    ...sequences.map(seq => ({
+      itemType: 'sequence',
+      ...seq,
+      children: campaigns
+        .filter(c => c.sequenceId === seq.id)
+        .sort((a, b) => (a.sequenceStepOrder || 0) - (b.sequenceStepOrder || 0))
+    })),
+    ...campaigns.filter(c => !c.sequenceId).map(camp => ({
+      itemType: 'campaign',
+      ...camp
+    }))
+  ];
 
-  const campTotalItems = campaigns.length;
-  const campTotalPages = Math.ceil(campTotalItems / campPageSize) || 1;
-  const paginatedCampaigns = campaigns.slice((campPage - 1) * campPageSize, campPage * campPageSize);
+  const totalItems = unifiedList.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const paginatedItems = unifiedList.slice((page - 1) * pageSize, page * pageSize);
 
-  const downloadReport = async (url, filename) => {
+  const toggleRow = (id) => {
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const downloadReport = async (url, filename, e) => {
+    if (e) e.stopPropagation();
     try {
       const res = await api.get(url, { responseType: 'blob' });
       const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
@@ -89,7 +107,7 @@ export default function ReportsPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
-    } catch (e) {
+    } catch (err) {
       setToast({ show: true, message: "Failed to download report.", variant: "danger" });
     }
   };
@@ -100,14 +118,18 @@ export default function ReportsPage() {
 
       {error && <AlertMessage message={error} />}
 
-      <Card className="border mb-4">
-        <Card.Body>
+      <Card className="border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+        <div style={{ height: "4px", background: "linear-gradient(90deg, #0d6efd, #0dcaf0)" }} />
+        <Card.Body className="p-4">
           <Form.Group>
-            <Form.Label className="fw-semibold">Select Client to view deliverables</Form.Label>
+            <Form.Label className="fw-bold text-dark mb-2">
+              <i className="bi bi-building me-2 text-primary"></i> Select Client to View Deliverables
+            </Form.Label>
             <Form.Select 
               value={selectedClientId} 
               onChange={(e) => setSelectedClientId(e.target.value)}
-              style={{ maxWidth: "400px" }}
+              className="border-primary shadow-sm"
+              style={{ maxWidth: "400px", borderRadius: "8px" }}
             >
               <option value="">-- Choose a Client --</option>
               {clients.map(c => (
@@ -119,117 +141,203 @@ export default function ReportsPage() {
       </Card>
 
       {selectedClientId && (
-        <>
-          <Card className="border mb-4">
-            <Card.Header className="bg-light fw-semibold p-3">Sequence Level Reports</Card.Header>
-            <Card.Body className="p-0">
-              <Table responsive hover className="mb-0">
-                <thead className="bg-light">
+        <Card className="border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+          <Card.Header className="bg-white border-bottom p-4 d-flex justify-content-between align-items-center">
+            <div className="d-flex align-items-center gap-3">
+              <div className="rounded-circle bg-success bg-opacity-10 d-flex align-items-center justify-content-center text-success" style={{ width: 42, height: 42 }}>
+                <i className="bi bi-file-earmark-bar-graph fs-5"></i>
+              </div>
+              <div>
+                <h5 className="fw-bold text-dark mb-0">Client Reporting Data</h5>
+                <span className="text-muted small">Sequences and standalone campaigns available for export</span>
+              </div>
+            </div>
+          </Card.Header>
+          <Card.Body className="p-0">
+            <Table hover responsive className="mb-0 align-middle">
+              <thead className="bg-light text-muted small text-uppercase" style={{ fontSize: "0.8rem", letterSpacing: "0.5px" }}>
+                <tr>
+                  <th className="py-3 ps-4" style={{ width: '40%' }}>Name / Item</th>
+                  <th className="py-3 text-center">Type / Model</th>
+                  <th className="py-3 text-center">Status / Details</th>
+                  <th className="py-3 text-end pe-4">Exports</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedItems.length > 0 ? paginatedItems.map(item => {
+                  if (item.itemType === 'sequence') {
+                    const isExpanded = !!expandedRows[item.id];
+                    return (
+                      <React.Fragment key={`seq-${item.id}`}>
+                        <tr 
+                          onClick={() => toggleRow(item.id)} 
+                          style={{ cursor: 'pointer', transition: 'all 0.2s' }}
+                          className={isExpanded ? "bg-light" : ""}
+                        >
+                          <td className="ps-4 py-3">
+                            <div className="d-flex align-items-center gap-2">
+                              <Button 
+                                variant="link" 
+                                className="p-0 text-secondary text-decoration-none"
+                                onClick={(e) => { e.stopPropagation(); toggleRow(item.id); }}
+                              >
+                                <i className={`bi bi-chevron-${isExpanded ? 'down' : 'right'} fs-6`}></i>
+                              </Button>
+                              <div className="rounded bg-primary bg-opacity-10 text-primary p-2 d-flex align-items-center justify-content-center" style={{ width: 32, height: 32 }}>
+                                <i className="bi bi-layers-fill"></i>
+                              </div>
+                              <div>
+                                <span className="fw-bold text-dark d-block">{item.name}</span>
+                                <span className="text-muted small">Sequence ({item.children.length} campaigns)</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="text-center text-muted fw-medium text-capitalize">
+                            {item.pricingModel.replace('_', ' ')}
+                          </td>
+                          <td className="text-center">
+                            <Badge bg="secondary" className="px-2 py-1 rounded-pill fw-medium">
+                              {item.status || "ACTIVE"}
+                            </Badge>
+                          </td>
+                          <td className="text-end pe-4">
+                            <Button 
+                              variant="outline-danger" 
+                              size="sm" 
+                              className="rounded-pill px-3 py-1 fw-medium shadow-sm me-2"
+                              onClick={(e) => downloadReport(`/reports/sequences/${item.id}/pdf`, `Sequence_Report_${item.name.replace(/\s+/g, '_')}.pdf`, e)}
+                            >
+                              <i className="bi bi-file-pdf-fill me-1"></i> PDF
+                            </Button>
+                            <Button 
+                              variant="outline-success" 
+                              size="sm" 
+                              className="rounded-pill px-3 py-1 fw-medium shadow-sm"
+                              onClick={(e) => downloadReport(`/reports/sequences/${item.id}/excel`, `Sequence_Report_${item.name.replace(/\s+/g, '_')}.xlsx`, e)}
+                            >
+                              <i className="bi bi-file-earmark-excel-fill me-1"></i> Excel
+                            </Button>
+                          </td>
+                        </tr>
+                        {/* Nested Campaigns */}
+                        {isExpanded && item.children.map((child, idx) => (
+                          <tr key={`camp-${child.id}`} className="bg-white" style={{ borderLeft: '4px solid #0d6efd' }}>
+                            <td className="ps-5 py-3">
+                              <div className="d-flex align-items-center gap-3 ms-4">
+                                <div className="text-muted small fw-bold">#{idx + 1}</div>
+                                <div>
+                                  <span className="fw-semibold text-dark d-block">{child.name}</span>
+                                  <span className="text-muted small">Campaign</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="text-center">
+                              <Badge bg={child.type === 'email' ? 'primary' : 'info'} text={child.type === 'email' ? 'light' : 'dark'} className="px-2 py-1 rounded-pill text-uppercase" style={{ fontSize: "0.7rem" }}>
+                                <i className={`bi bi-${child.type === 'email' ? 'envelope-fill' : 'telephone-fill'} me-1`}></i>
+                                {child.type}
+                              </Badge>
+                            </td>
+                            <td className="text-center">
+                              <Badge bg={child.status === 'completed' ? 'success' : child.status === 'active' ? 'primary' : 'secondary'} className="px-2 py-1 rounded-pill text-uppercase">
+                                {child.status}
+                              </Badge>
+                            </td>
+                            <td className="text-end pe-4">
+                              <Button 
+                                variant="outline-danger" 
+                                size="sm" 
+                                className="rounded-pill px-3 py-1 fw-medium me-2"
+                                onClick={(e) => downloadReport(`/reports/campaigns/${child.id}/pdf`, `Campaign_Report_${child.name.replace(/\s+/g, '_')}.pdf`, e)}
+                              >
+                                PDF
+                              </Button>
+                              <Button 
+                                variant="outline-success" 
+                                size="sm" 
+                                className="rounded-pill px-3 py-1 fw-medium"
+                                onClick={(e) => downloadReport(`/reports/campaigns/${child.id}/excel`, `Campaign_Leads_${child.name.replace(/\s+/g, '_')}.xlsx`, e)}
+                              >
+                                Excel
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  } else {
+                    // Standalone campaign
+                    return (
+                      <tr key={`standalone-${item.id}`}>
+                        <td className="ps-4 py-3">
+                          <div className="d-flex align-items-center gap-2">
+                            <div style={{ width: 20 }}></div> {/* alignment spacer */}
+                            <div className="rounded bg-info bg-opacity-10 text-info p-2 d-flex align-items-center justify-content-center" style={{ width: 32, height: 32 }}>
+                              <i className={`bi bi-${item.type === 'email' ? 'envelope' : 'telephone'}`}></i>
+                            </div>
+                            <div>
+                              <span className="fw-bold text-dark d-block">{item.name}</span>
+                              <span className="text-muted small">Standalone Campaign</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="text-center">
+                          <Badge bg={item.type === 'email' ? 'primary' : 'info'} text={item.type === 'email' ? 'light' : 'dark'} className="px-2 py-1 rounded-pill text-uppercase" style={{ fontSize: "0.7rem" }}>
+                            <i className={`bi bi-${item.type === 'email' ? 'envelope-fill' : 'telephone-fill'} me-1`}></i>
+                            {item.type}
+                          </Badge>
+                        </td>
+                        <td className="text-center">
+                          <Badge bg={item.status === 'completed' ? 'success' : item.status === 'active' ? 'primary' : 'secondary'} className="px-2 py-1 rounded-pill text-uppercase">
+                            {item.status}
+                          </Badge>
+                        </td>
+                        <td className="text-end pe-4">
+                          <Button 
+                            variant="outline-danger" 
+                            size="sm" 
+                            className="rounded-pill px-3 py-1 fw-medium shadow-sm me-2"
+                            onClick={(e) => downloadReport(`/reports/campaigns/${item.id}/pdf`, `Campaign_Report_${item.name.replace(/\s+/g, '_')}.pdf`, e)}
+                          >
+                            <i className="bi bi-file-pdf-fill me-1"></i> PDF
+                          </Button>
+                          <Button 
+                            variant="outline-success" 
+                            size="sm" 
+                            className="rounded-pill px-3 py-1 fw-medium shadow-sm"
+                            onClick={(e) => downloadReport(`/reports/campaigns/${item.id}/excel`, `Campaign_Leads_${item.name.replace(/\s+/g, '_')}.xlsx`, e)}
+                          >
+                            <i className="bi bi-file-earmark-excel-fill me-1"></i> Excel
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                }) : (
                   <tr>
-                    <th>Sequence Name</th>
-                    <th>Pricing Model</th>
-                    <th className="text-end">Downloads</th>
+                    <td colSpan="4" className="text-center py-5">
+                      <div className="text-muted mb-2"><i className="bi bi-inbox fs-2"></i></div>
+                      <span className="text-muted fw-medium">No reporting deliverables available for this client.</span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {paginatedSequences.length > 0 ? paginatedSequences.map(seq => (
-                    <tr key={seq.id}>
-                      <td className="align-middle fw-medium">{seq.name}</td>
-                      <td className="align-middle">{seq.pricingModel.replace('_', ' ')}</td>
-                      <td className="align-middle text-end">
-                        <Button 
-                          variant="outline-danger" 
-                          size="sm" 
-                          className="me-2"
-                          onClick={() => downloadReport(`/reports/sequences/${seq.id}/pdf`, `Sequence_Report_${seq.name.replace(/\s+/g, '_')}.pdf`)}
-                        >
-                          <i className="bi bi-file-pdf me-1"></i> PDF
-                        </Button>
-                        <Button 
-                          variant="outline-success" 
-                          size="sm" 
-                          onClick={() => downloadReport(`/reports/sequences/${seq.id}/excel`, `Sequence_Report_${seq.name.replace(/\s+/g, '_')}.xlsx`)}
-                        >
-                          <i className="bi bi-file-excel me-1"></i> Excel
-                        </Button>
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan="3" className="text-center text-muted py-4">No sequences found for this client.</td></tr>
-                  )}
-                </tbody>
-              </Table>
-            </Card.Body>
+                )}
+              </tbody>
+            </Table>
+          </Card.Body>
+          <div className="bg-light border-top pt-2">
             <PaginationControl
-              currentPage={seqPage}
-              totalPages={seqTotalPages}
-              totalItems={seqTotalItems}
-              pageSize={seqPageSize}
-              onPageChange={setSeqPage}
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setPage}
               onPageSizeChange={(size) => {
-                setSeqPageSize(size);
-                setSeqPage(1);
+                setPageSize(size);
+                setPage(1);
               }}
-              itemName="sequence reports"
+              itemName="items"
             />
-          </Card>
-
-          <Card className="border">
-            <Card.Header className="bg-light fw-semibold p-3">Campaign Level Reports</Card.Header>
-            <Card.Body className="p-0">
-              <Table responsive hover className="mb-0">
-                <thead className="bg-light">
-                  <tr>
-                    <th>Campaign Name</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th className="text-end">Downloads</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedCampaigns.length > 0 ? paginatedCampaigns.map(camp => (
-                    <tr key={camp.id}>
-                      <td className="align-middle fw-medium">{camp.name}</td>
-                      <td className="align-middle text-capitalize">{camp.type}</td>
-                      <td className="align-middle text-uppercase small">{camp.status}</td>
-                      <td className="align-middle text-end">
-                        <Button 
-                          variant="outline-danger" 
-                          size="sm" 
-                          className="me-2"
-                          onClick={() => downloadReport(`/reports/campaigns/${camp.id}/pdf`, `Campaign_Report_${camp.name.replace(/\s+/g, '_')}.pdf`)}
-                        >
-                          <i className="bi bi-file-pdf me-1"></i> PDF
-                        </Button>
-                        <Button 
-                          variant="outline-success" 
-                          size="sm" 
-                          onClick={() => downloadReport(`/reports/campaigns/${camp.id}/excel`, `Campaign_Leads_${camp.name.replace(/\s+/g, '_')}.xlsx`)}
-                        >
-                          <i className="bi bi-file-excel me-1"></i> Excel
-                        </Button>
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan="4" className="text-center text-muted py-4">No active/completed campaigns found.</td></tr>
-                  )}
-                </tbody>
-              </Table>
-            </Card.Body>
-            <PaginationControl
-              currentPage={campPage}
-              totalPages={campTotalPages}
-              totalItems={campTotalItems}
-              pageSize={campPageSize}
-              onPageChange={setCampPage}
-              onPageSizeChange={(size) => {
-                setCampPageSize(size);
-                setCampPage(1);
-              }}
-              itemName="campaign reports"
-            />
-          </Card>
-        </>
+          </div>
+        </Card>
       )}
 
       <ToastNotification show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} message={toast.message} variant={toast.variant} />

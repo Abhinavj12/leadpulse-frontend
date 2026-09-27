@@ -329,6 +329,15 @@ export default function CampaignManagementDashboard()
   const [showDispatchDetailModal, setShowDispatchDetailModal] = useState(false);
   const [showDispatchHistory, setShowDispatchHistory] = useState(true);
 
+  // Per-Lead Email Engagement Details
+  const [leadEngagements, setLeadEngagements] = useState([]);
+  const [loadingLeadEngagements, setLoadingLeadEngagements] = useState(false);
+  const [leadEngagementSearch, setLeadEngagementSearch] = useState("");
+  const [leadEngagementFilter, setLeadEngagementFilter] = useState("all");
+  const [selectedLeadForDetail, setSelectedLeadForDetail] = useState(null);
+  const [showLeadDetailModal, setShowLeadDetailModal] = useState(false);
+  const [showLeadEngagementSection, setShowLeadEngagementSection] = useState(true);
+  const [showFunnelSection, setShowFunnelSection] = useState(true);
   // ── Modal/Confirm dialog states ──────────────────────────────────────────────
   const [showDispatchConfirm, setShowDispatchConfirm] = useState(false);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
@@ -338,6 +347,63 @@ export default function CampaignManagementDashboard()
   // ── Toast state ───────────────────────────────────────────────────────────────
   const [toast, setToast] = useState({ show: false, message: "", variant: "info" });
   const showToast = (message, variant = "info") => setToast({ show: true, message, variant });
+
+  const loadLeadEngagements = useCallback(async (camp) => {
+    if (!camp || camp.type !== "email" || camp.status === "draft") return;
+    setLoadingLeadEngagements(true);
+    try {
+      const leadsRes = await api.get('/leads', {
+        params: {
+          clientId: camp.clientId,
+          leadListId: camp.leadListId,
+          onlyFromCampaignId: camp.id,
+          pageSize: 100
+        }
+      });
+      const leadsList = leadsRes.data.data || [];
+
+      const histories = await Promise.all(
+        leadsList.map(l =>
+          api.get(`/leads/${l.id}/history`, { params: { clientId: camp.clientId } })
+            .then(res => ({ leadId: l.id, history: res.data.data }))
+            .catch(() => ({ leadId: l.id, history: null }))
+        )
+      );
+
+      const historyMap = new Map(histories.map(h => [h.leadId, h.history]));
+
+      const enriched = leadsList.map(l => {
+        const hist = historyMap.get(l.id);
+        let matching = null;
+        if (camp.dispatchStatus !== "not_sent") {
+          const candidates = hist?.emailEngagements?.filter(e => e.campaignName === camp.name) || [];
+          // Pick engagement that was sent after this campaign was created to avoid name collisions
+          matching = candidates.find(e => !e.sentAt || new Date(e.sentAt) >= new Date(camp.createdAt)) || candidates[0] || null;
+        }
+
+        const mem = l.memberships?.find(m => m.leadListId === camp.leadListId);
+
+        return {
+          ...l,
+          listStatus: mem?.status || "NEW",
+          engagement: matching,
+          openCount: matching ? (matching.openCount || 0) : 0,
+          clickCount: matching ? (matching.clickCount || 0) : 0,
+          openedAt: matching?.openedAt || null,
+          clickedAt: matching?.clickedAt || null,
+          sentAt: matching?.sentAt || null,
+          engStatus: matching?.status || (matching?.sentAt ? "sent" : "not_sent"),
+          fullHistory: hist
+        };
+      });
+
+      setLeadEngagements(enriched);
+    } catch (e) {
+      console.error("Failed to load per-lead engagement details", e);
+    } finally {
+      setLoadingLeadEngagements(false);
+    }
+  }, []);
 
   const loadData = async () =>
   {
@@ -368,19 +434,14 @@ export default function CampaignManagementDashboard()
         setBannerPreviewUrl(campData.bannerImageUrl || "");
 
         // Fetch sibling campaigns in the same cadence for the "Target Leads from Prior Step" dropdown.
-        // We ONLY offer cadence siblings here — they are the only campaigns guaranteed to share
-        // the same lead list. Loading all client campaigns would allow cross-list targeting which
-        // is logically incorrect (CampaignLead rows from a different list don't overlap this one).
         if (campData.sequenceId) {
           try {
             const siblingsRes = await api.get(`/campaigns?sequenceId=${campData.sequenceId}`);
-            // Exclude this campaign itself from the options
             setClientCampaigns(siblingsRes.data.data.filter(c => c.id !== campaignId));
           } catch (e) {
             console.error("Failed to load cadence siblings for prior-step targeting dropdown", e);
           }
         } else {
-          // Standalone campaign: no prior-step filter available — clear it
           setClientCampaigns([]);
         }
       }
@@ -411,7 +472,7 @@ export default function CampaignManagementDashboard()
         }
       }
 
-      // If it's an email campaign and approved, fetch dispatches and analytics
+      // If it's an email campaign and approved, fetch dispatches, analytics, and lead engagements
       if (campData.type === "email" && campData.status !== "draft")
       {
         const [dispRes, anRes] = await Promise.all([
@@ -420,6 +481,7 @@ export default function CampaignManagementDashboard()
         ]);
         setEmailDispatches(dispRes.data.data);
         setEmailAnalytics(anRes.data.data);
+        loadLeadEngagements(campData);
       }
 
       // Fetch the full rich report for ANY approved campaign (used for unified KPIs)
@@ -720,7 +782,39 @@ The Acme Team</p>`
   };
 
   const isEmail = campaign?.type === 'email';
-  const metrics = report?.metrics || {};
+  
+  // Use backend metrics as a safe base to preserve any non-engagement fields
+  const liveMetrics = { ...(report?.metrics || {}) };
+
+  if (isEmail && leadEngagements && leadEngagements.length > 0) {
+    // Reset engagement fields for live calculation
+    liveMetrics.sent = 0;
+    liveMetrics.delivered = 0;
+    liveMetrics.opened = 0;
+    liveMetrics.clicked = 0;
+    liveMetrics.bounced = 0;
+    liveMetrics.unsubscribed = 0;
+    liveMetrics.converted = 0;
+
+    leadEngagements.forEach(lead => {
+      if (lead.sentAt) {
+        liveMetrics.sent++;
+        if (lead.engStatus !== 'bounced') {
+          liveMetrics.delivered++;
+        }
+      }
+      if (lead.engStatus === 'bounced') liveMetrics.bounced++;
+      if (lead.isUnsubscribed && lead.sentAt) liveMetrics.unsubscribed++;
+      
+      // Implicitly count an open if there's a click, since tracking pixels can be blocked
+      if (lead.openCount > 0 || lead.clickCount > 0) liveMetrics.opened++;
+      
+      if (lead.clickCount > 0) liveMetrics.clicked++;
+      if (lead.listStatus?.toUpperCase() === 'CONVERTED' || lead.engagement?.convertedAt) liveMetrics.converted++;
+    });
+  }
+
+  const metrics = liveMetrics;
   const base = metrics.delivered > 0 ? metrics.delivered : metrics.sent;
   const openRate = base ? ((metrics.opened / base) * 100).toFixed(2) : 0;
   const ctr = base ? ((metrics.clicked / base) * 100).toFixed(2) : 0;
@@ -730,6 +824,27 @@ The Acme Team</p>`
   const audienceCount = campaign?.audienceCount || 0;
 
   if (loading) return <AppLayout role="manager"><LoadingSpinner /></AppLayout>;
+  const filteredLeadEngagements = leadEngagements.filter(lead => {
+    const searchLower = leadEngagementSearch.trim().toLowerCase();
+    const fullName = `${lead.firstName || ""} ${lead.lastName || ""}`.toLowerCase();
+    const matchesSearch = !searchLower || (
+      fullName.includes(searchLower) ||
+      (lead.email || "").toLowerCase().includes(searchLower) ||
+      (lead.company || "").toLowerCase().includes(searchLower) ||
+      (lead.jobTitle || "").toLowerCase().includes(searchLower)
+    );
+
+    if (!matchesSearch) return false;
+
+    if (leadEngagementFilter === "opened") return lead.openCount > 0;
+    if (leadEngagementFilter === "clicked") return lead.clickCount > 0;
+    if (leadEngagementFilter === "bounced") return lead.engStatus === "bounced" || lead.isHardBounced;
+    if (leadEngagementFilter === "unsubscribed") return lead.isUnsubscribed;
+    if (leadEngagementFilter === "not_sent") return !lead.sentAt && lead.engStatus === "not_sent";
+
+    return true;
+  });
+
   if (error || !campaign) return <AppLayout role="manager"><AlertMessage message={error} /></AppLayout>;
 
   return (
@@ -1444,7 +1559,13 @@ The Acme Team</p>`
               <AlertMessage variant="warning" message="Approve the campaign first to freeze the audience and unlock the dispatch engine." />
             ) : (
               <Row>
-                {emailDispatches.length === 0 && (
+                {emailDispatches.length === 0 && campaign.status === "completed" && (
+                  <Col md={12} className="mb-4">
+                    <AlertMessage variant="info" message="This campaign was marked as completed without any emails being dispatched." />
+                  </Col>
+                )}
+
+                {emailDispatches.length === 0 && campaign.status !== "completed" && (
                   <Col md={12} className="mb-4">
                     <Card className="border text-center p-4 shadow-sm">
                       <h3 className="mb-3">Ready to Send?</h3>
@@ -1469,106 +1590,416 @@ The Acme Team</p>`
 
                 {report && (
                   <Col md={12} className="mb-4">
-                    <Card className="border-0 shadow-sm rounded-3">
-                      <Card.Header className="bg-white border-0 pt-4 px-4 pb-2 fw-bold">
-                        <i className="bi bi-bar-chart text-primary me-2"></i> Email Engagement Funnel & Rates
+                    <Card className="border-0 shadow-sm rounded-4 overflow-hidden">
+                      <div style={{ height: "3px", background: "linear-gradient(90deg, #0d6efd, #6610f2)" }} />
+                      <Card.Header className="bg-white border-bottom p-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                        <div className="d-flex align-items-center gap-2">
+                          <div
+                            className="rounded-circle bg-primary bg-opacity-10 d-flex align-items-center justify-content-center text-primary"
+                            style={{ width: 38, height: 38 }}
+                          >
+                            <i className="bi bi-bar-chart fs-5"></i>
+                          </div>
+                          <div>
+                            <h6 className="fw-bold text-dark mb-0 fs-6">Email Engagement Funnel & Rates</h6>
+                            <span className="text-muted small">
+                              Aggregate delivery, open, and click performance metrics
+                            </span>
+                          </div>
+                        </div>
+                        <div className="d-flex align-items-center gap-2">
+                          <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            className="rounded-circle d-flex justify-content-center align-items-center"
+                            style={{ width: "32px", height: "32px" }}
+                            onClick={() => setShowFunnelSection(!showFunnelSection)}
+                          >
+                            <i className={`bi bi-chevron-${showFunnelSection ? 'up' : 'down'}`}></i>
+                          </Button>
+                        </div>
                       </Card.Header>
-                      <Card.Body className="p-4 pt-0">
-                        <Row className="g-4 mb-4">
-                          <Col md={6}>
-                            <div className="p-3 bg-light rounded-3">
-                              <div className="d-flex justify-content-between fw-bold mb-1">
-                                <span>Delivered</span>
-                                <span>{metrics.delivered || 0} / {metrics.sent || 0}</span>
-                              </div>
-                              <ProgressBar variant="primary" now={metrics.sent ? ((metrics.delivered || 0) / metrics.sent) * 100 : 0} />
-                            </div>
-                          </Col>
-                          <Col md={6}>
-                            <div className="p-3 bg-light rounded-3">
-                              <div className="d-flex justify-content-between fw-bold mb-1">
-                                <span>Unique Opens (Rate: {openRate}%)</span>
-                                <span>{metrics.opened || 0}</span>
-                              </div>
-                              <ProgressBar variant="info" now={openRate} />
-                            </div>
-                          </Col>
-                          <Col md={6}>
-                            <div className="p-3 bg-light rounded-3">
-                              <div className="d-flex justify-content-between fw-bold mb-1">
-                                <span>Unique Clicks (CTR: {ctr}%)</span>
-                                <span>{metrics.clicked || 0}</span>
-                              </div>
-                              <ProgressBar variant="warning" now={ctr} />
-                            </div>
-                          </Col>
-                          <Col md={6}>
-                            <div className="p-3 bg-light rounded-3">
-                              <div className="d-flex justify-content-between fw-bold mb-1">
-                                <span>Click-to-Open (CTOR: {ctor}%)</span>
-                                <span>{ctor}%</span>
-                              </div>
-                              <ProgressBar variant="success" now={ctor} />
-                            </div>
-                          </Col>
-                        </Row>
+                      <Collapse in={showFunnelSection}>
+                        <div>
+                          <Card.Body className="p-4 pt-0">
+                            <Row className="g-4 mb-4">
+                              <Col md={6}>
+                                <div className="p-3 bg-light rounded-3">
+                                  <div className="d-flex justify-content-between fw-bold mb-1">
+                                    <span>Delivered</span>
+                                    <span>{metrics.delivered || 0} / {metrics.sent || 0}</span>
+                                  </div>
+                                  <ProgressBar variant="primary" now={metrics.sent ? ((metrics.delivered || 0) / metrics.sent) * 100 : 0} />
+                                </div>
+                              </Col>
+                              <Col md={6}>
+                                <div className="p-3 bg-light rounded-3">
+                                  <div className="d-flex justify-content-between fw-bold mb-1">
+                                    <span>Unique Opens (Rate: {openRate}%)</span>
+                                    <span>{metrics.opened || 0}</span>
+                                  </div>
+                                  <ProgressBar variant="info" now={openRate} />
+                                </div>
+                              </Col>
+                              <Col md={6}>
+                                <div className="p-3 bg-light rounded-3">
+                                  <div className="d-flex justify-content-between fw-bold mb-1">
+                                    <span>Unique Clicks (CTR: {ctr}%)</span>
+                                    <span>{metrics.clicked || 0}</span>
+                                  </div>
+                                  <ProgressBar variant="warning" now={ctr} />
+                                </div>
+                              </Col>
+                              <Col md={6}>
+                                <div className="p-3 bg-light rounded-3">
+                                  <div className="d-flex justify-content-between fw-bold mb-1">
+                                    <span>Click-to-Open Rate (CTOR)</span>
+                                    <span>{ctor}%</span>
+                                  </div>
+                                  <ProgressBar variant="success" now={ctor} />
+                                </div>
+                              </Col>
+                            </Row>
 
-                        <Row className="g-3">
-                          <Col md={6}>
-                            <div className="d-flex justify-content-between align-items-center p-3 border rounded-3">
-                              <span className="text-muted fw-medium"><i className="bi bi-exclamation-triangle text-danger me-2"></i> Bounced Emails</span>
-                              <span className="fw-bold text-danger">{metrics.bounced || 0} ({bounceRate}%)</span>
-                            </div>
-                          </Col>
-                          <Col md={6}>
-                            <div className="d-flex justify-content-between align-items-center p-3 border rounded-3">
-                              <span className="text-muted fw-medium"><i className="bi bi-dash-circle text-secondary me-2"></i> Unsubscribes</span>
-                              <span className="fw-bold text-secondary">{metrics.unsubscribed || 0} ({unsubscribeRate}%)</span>
-                            </div>
-                          </Col>
-                        </Row>
-                      </Card.Body>
+                            <Row className="g-3">
+                              <Col md={6}>
+                                <div className="d-flex justify-content-between align-items-center p-3 border rounded-3">
+                                  <span className="text-muted fw-medium"><i className="bi bi-exclamation-triangle text-danger me-2"></i> Bounced Emails</span>
+                                  <span className="fw-bold text-danger">{metrics.bounced || 0} ({bounceRate}%)</span>
+                                </div>
+                              </Col>
+                              <Col md={6}>
+                                <div className="d-flex justify-content-between align-items-center p-3 border rounded-3">
+                                  <span className="text-muted fw-medium"><i className="bi bi-dash-circle text-secondary me-2"></i> Unsubscribes</span>
+                                  <span className="fw-bold text-secondary">{metrics.unsubscribed || 0} ({unsubscribeRate}%)</span>
+                                </div>
+                              </Col>
+                            </Row>
+                          </Card.Body>
+                        </div>
+                      </Collapse>
                     </Card>
                   </Col>
                 )}
 
+                {/* PER-LEAD EMAIL ENGAGEMENT METRICS */}
+                <Col md={12} className="mb-4">
+                  <Card className="border-0 shadow-sm rounded-4 overflow-hidden">
+                    <div style={{ height: "3px", background: "linear-gradient(90deg, #0d6efd, #0dcaf0)" }} />
+                    <Card.Header className="bg-white border-bottom p-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                      <div className="d-flex align-items-center gap-2">
+                        <div
+                          className="rounded-circle bg-primary bg-opacity-10 d-flex align-items-center justify-content-center text-primary"
+                          style={{ width: 38, height: 38 }}
+                        >
+                          <i className="bi bi-people-fill fs-5"></i>
+                        </div>
+                        <div>
+                          <h6 className="fw-bold text-dark mb-0 fs-6">Per-Lead Email Engagement Details</h6>
+                          <span className="text-muted small">
+                            Individual engagement statistics, open/click counts, and timestamps for each lead
+                          </span>
+                        </div>
+                      </div>
+                      <div className="d-flex align-items-center gap-2">
+                        <Badge bg="primary" className="px-3 py-2 rounded-pill fw-semibold">
+                          {leadEngagements.length} Total Leads
+                        </Badge>
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          className="rounded-pill px-3"
+                          onClick={() => loadLeadEngagements(campaign)}
+                          disabled={loadingLeadEngagements}
+                        >
+                          {loadingLeadEngagements ? (
+                            <Spinner animation="border" size="sm" />
+                          ) : (
+                            <>
+                              <i className="bi bi-arrow-clockwise me-1"></i> Refresh
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          className="rounded-circle d-flex justify-content-center align-items-center"
+                          style={{ width: "32px", height: "32px" }}
+                          onClick={() => setShowLeadEngagementSection(!showLeadEngagementSection)}
+                        >
+                          <i className={`bi bi-chevron-${showLeadEngagementSection ? 'up' : 'down'}`}></i>
+                        </Button>
+                      </div>
+                    </Card.Header>
+                    <Collapse in={showLeadEngagementSection}>
+                      <div>
+                        <Card.Body className="p-3">
+                          <Row className="g-2 mb-3">
+                        <Col md={6} lg={4}>
+                          <Form.Control
+                            type="text"
+                            placeholder="Search by name, email, or company..."
+                            value={leadEngagementSearch}
+                            onChange={(e) => setLeadEngagementSearch(e.target.value)}
+                            className="rounded-pill ps-3"
+                            size="sm"
+                          />
+                        </Col>
+                        <Col md={6} lg={3}>
+                          <Form.Select
+                            size="sm"
+                            className="rounded-pill"
+                            value={leadEngagementFilter}
+                            onChange={(e) => setLeadEngagementFilter(e.target.value)}
+                          >
+                            <option value="all">All Engagements</option>
+                            <option value="opened">Opened (Opens &gt; 0)</option>
+                            <option value="clicked">Clicked (Clicks &gt; 0)</option>
+                            <option value="bounced">Bounced</option>
+                            <option value="unsubscribed">Unsubscribed</option>
+                            <option value="not_sent">Not Sent / Queued</option>
+                          </Form.Select>
+                        </Col>
+                      </Row>
+
+                      {loadingLeadEngagements ? (
+                        <div className="text-center py-5">
+                          <Spinner animation="border" variant="primary" size="sm" />
+                          <div className="text-muted small mt-2">Loading per-lead engagement statistics...</div>
+                        </div>
+                      ) : filteredLeadEngagements.length === 0 ? (
+                        <div className="text-center py-4 text-muted border rounded-3 bg-light">
+                          <i className="bi bi-inbox fs-2 d-block mb-2 text-secondary"></i>
+                          <div>No lead engagements found matching your search/filter.</div>
+                        </div>
+                      ) : (
+                        <div className="table-responsive rounded-3 border">
+                          <Table hover align="middle" className="mb-0 fs-7" style={{ fontSize: "0.875rem" }}>
+                            <thead className="bg-light text-secondary text-uppercase small" style={{ fontSize: "0.75rem" }}>
+                              <tr>
+                                <th className="py-3 ps-3">Lead / Person</th>
+                                <th className="py-3">Email Address</th>
+                                <th className="py-3 text-center">List Status</th>
+                                <th className="py-3 text-center">Dispatch Status</th>
+                                <th className="py-3 text-center">Opens</th>
+                                <th className="py-3 text-center">Clicks</th>
+                                <th className="py-3 text-end pe-3">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredLeadEngagements.map((lead) => {
+                                const isOpened = lead.openCount > 0 || lead.clickCount > 0;
+                                const isClicked = lead.clickCount > 0;
+                                const isBouncedThisCampaign = lead.engStatus === 'bounced';
+                                const isHardBounced = lead.isHardBounced;
+                                const isUnsub = lead.isUnsubscribed;
+                                const isDnc = lead.dnc;
+                                const hasDispatched = emailDispatches?.length > 0;
+
+                                return (
+                                  <tr key={lead.id}>
+                                    <td className="ps-3">
+                                      <div className="fw-semibold text-dark">
+                                        {lead.firstName} {lead.lastName}
+                                      </div>
+                                      <div className="text-muted small" style={{ fontSize: "0.75rem" }}>
+                                        {[lead.jobTitle, lead.company].filter(Boolean).join(" • ") || "—"}
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <span className="font-monospace text-secondary small">{lead.email}</span>
+                                    </td>
+                                    <td className="text-center">
+                                      <Badge
+                                        bg={
+                                          lead.listStatus?.toUpperCase() === "CONVERTED"
+                                            ? "success"
+                                            : lead.listStatus?.toUpperCase() === "QUALIFIED"
+                                            ? "info"
+                                            : lead.listStatus?.toUpperCase() === "CONTACTED"
+                                            ? "primary"
+                                            : "secondary"
+                                        }
+                                        className="px-2 py-1 rounded-pill text-uppercase"
+                                        style={{ fontSize: "0.65rem" }}
+                                      >
+                                        {lead.listStatus}
+                                      </Badge>
+                                    </td>
+                                    <td className="text-center">
+                                      {isBouncedThisCampaign ? (
+                                        <div>
+                                          <Badge bg="danger" className="px-2 py-1 rounded-pill">
+                                            <i className="bi bi-exclamation-triangle-fill me-1"></i>Bounced
+                                          </Badge>
+                                          {lead.sentAt && (
+                                            <div className="text-muted small mt-1" style={{ fontSize: "0.7rem" }}>
+                                              {new Date(lead.sentAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : lead.sentAt ? (
+                                        <div>
+                                          <Badge bg="success" className="px-2 py-1 rounded-pill mb-1 d-inline-block">
+                                            <i className="bi bi-check-circle-fill me-1"></i>Sent / Delivered
+                                          </Badge>
+                                          {isUnsub && (
+                                            <div className="mt-1">
+                                              <Badge bg="dark" className="px-2 py-1 rounded-pill" style={{ fontSize: "0.65rem" }}>
+                                                Unsubscribed
+                                              </Badge>
+                                            </div>
+                                          )}
+                                          <div className="text-muted small mt-1" style={{ fontSize: "0.7rem" }}>
+                                            {new Date(lead.sentAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                                          </div>
+                                        </div>
+                                      ) : (hasDispatched && isDnc) ? (
+                                        <Badge bg="secondary" className="px-2 py-1 rounded-pill">
+                                          <i className="bi bi-slash-circle me-1"></i>Skipped (DNC)
+                                        </Badge>
+                                      ) : (hasDispatched && isUnsub) ? (
+                                        <Badge bg="secondary" className="px-2 py-1 rounded-pill">
+                                          <i className="bi bi-slash-circle me-1"></i>Skipped (Unsubscribed)
+                                        </Badge>
+                                      ) : (hasDispatched && isHardBounced) ? (
+                                        <Badge bg="secondary" className="px-2 py-1 rounded-pill">
+                                          <i className="bi bi-slash-circle me-1"></i>Skipped (Bounced)
+                                        </Badge>
+                                      ) : (
+                                        <Badge bg="warning" text="dark" className="px-2 py-1 rounded-pill">
+                                          Queued / Pending
+                                        </Badge>
+                                      )}
+                                    </td>
+                                    <td className="text-center">
+                                      {isOpened ? (
+                                        <div>
+                                          <Badge bg="info" className="px-3 py-1 rounded-pill fs-7">
+                                            <i className="bi bi-envelope-open-fill me-1"></i>
+                                            {lead.openCount > 0 ? `${lead.openCount} ${lead.openCount === 1 ? "Open" : "Opens"}` : "1 Open (Implicit)"}
+                                          </Badge>
+                                          {lead.openedAt ? (
+                                            <div className="text-muted small mt-1" style={{ fontSize: "0.7rem" }}>
+                                              {new Date(lead.openedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                                            </div>
+                                          ) : lead.clickedAt ? (
+                                            <div className="text-muted small mt-1" style={{ fontSize: "0.7rem" }}>
+                                              {new Date(lead.clickedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      ) : (
+                                        <span className="text-muted small">—</span>
+                                      )}
+                                    </td>
+                                    <td className="text-center">
+                                      {isClicked ? (
+                                        <div>
+                                          <Badge bg="warning" text="dark" className="px-3 py-1 rounded-pill fs-7">
+                                            <i className="bi bi-cursor-fill me-1"></i>
+                                            {lead.clickCount} {lead.clickCount === 1 ? "Click" : "Clicks"}
+                                          </Badge>
+                                          {lead.clickedAt && (
+                                            <div className="text-muted small mt-1" style={{ fontSize: "0.7rem" }}>
+                                              {new Date(lead.clickedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="text-muted small">—</span>
+                                      )}
+                                    </td>
+                                    <td className="text-end pe-3">
+                                      <Button
+                                        variant="outline-primary"
+                                        size="sm"
+                                        className="rounded-pill px-3 py-1 small fw-medium"
+                                        onClick={() => {
+                                          setSelectedLeadForDetail(lead);
+                                          setShowLeadDetailModal(true);
+                                        }}
+                                      >
+                                        View History
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </Table>
+                        </div>
+                      )}
+                      </Card.Body>
+                    </div>
+                  </Collapse>
+                  </Card>
+                </Col>
+
                 <Col md={12}>
-                  <Card className="border">
-                    <Card.Header className="bg-light fw-semibold p-3 d-flex justify-content-between align-items-center" style={{ cursor: 'pointer' }} onClick={() => setShowDispatchHistory(!showDispatchHistory)}>
-                      <span>Dispatch Job History</span>
-                      <i className={`bi bi-chevron-${showDispatchHistory ? 'up' : 'down'}`}></i>
+                  <Card className="border-0 shadow-sm rounded-4 overflow-hidden">
+                    <div style={{ height: "3px", background: "linear-gradient(90deg, #6610f2, #d63384)" }} />
+                    <Card.Header className="bg-white border-bottom p-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                      <div className="d-flex align-items-center gap-2">
+                        <div
+                          className="rounded-circle bg-danger bg-opacity-10 d-flex align-items-center justify-content-center text-danger"
+                          style={{ width: 38, height: 38 }}
+                        >
+                          <i className="bi bi-clock-history fs-5"></i>
+                        </div>
+                        <div>
+                          <h6 className="fw-bold text-dark mb-0 fs-6">Dispatch Job History</h6>
+                          <span className="text-muted small">
+                            Execution logs and delivery metrics for all batch dispatches
+                          </span>
+                        </div>
+                      </div>
+                      <div className="d-flex align-items-center gap-2">
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          className="rounded-circle d-flex justify-content-center align-items-center"
+                          style={{ width: "32px", height: "32px" }}
+                          onClick={() => setShowDispatchHistory(!showDispatchHistory)}
+                        >
+                          <i className={`bi bi-chevron-${showDispatchHistory ? 'up' : 'down'}`}></i>
+                        </Button>
+                      </div>
                     </Card.Header>
                     <Collapse in={showDispatchHistory}>
                       <div>
                         <Card.Body className="p-0">
-                          <Table responsive hover className="mb-0">
-                            <thead className="bg-light">
+                          <Table responsive hover className="mb-0 align-middle">
+                            <thead className="bg-light text-muted small text-uppercase">
                               <tr>
-                                <th>Status</th>
-                                <th>Processed</th>
-                                <th>Sent</th>
-                                <th>Failed</th>
-                                <th>Started At</th>
-                                <th className="text-end">Details</th>
+                                <th className="py-3 ps-4">Status</th>
+                                <th className="py-3 text-center">Processed</th>
+                                <th className="py-3 text-center">Sent</th>
+                                <th className="py-3 text-center">Failed</th>
+                                <th className="py-3">Started At</th>
+                                <th className="py-3 text-end pe-4">Actions</th>
                               </tr>
                             </thead>
                             <tbody>
                               {emailDispatches.length > 0 ? emailDispatches.map(job => (
                                 <tr key={job.id}>
-                                  <td className="align-middle">
-                                    <Badge bg={job.status === 'completed' ? 'success' : job.status === 'failed' ? 'danger' : 'warning text-dark'}>
+                                  <td className="ps-4">
+                                    <Badge bg={job.status === 'completed' ? 'success' : job.status === 'failed' ? 'danger' : 'warning'} text={job.status === 'completed' || job.status === 'failed' ? 'light' : 'dark'} className="px-3 py-2 rounded-pill text-uppercase fs-7">
+                                      <i className={`bi bi-${job.status === 'completed' ? 'check-circle-fill' : job.status === 'failed' ? 'x-circle-fill' : 'hourglass-split'} me-1`}></i>
                                       {job.status}
                                     </Badge>
                                   </td>
-                                  <td className="align-middle">{job.processed}</td>
-                                  <td className="align-middle text-primary fw-bold">{job.sent}</td>
-                                  <td className="align-middle text-danger">{job.failed}</td>
-                                  <td className="align-middle">{new Date(job.createdAt).toLocaleString()}</td>
-                                  <td className="align-middle text-end">
+                                  <td className="text-center fw-medium text-secondary">{job.processed}</td>
+                                  <td className="text-center fw-bold text-success">{job.sent}</td>
+                                  <td className="text-center fw-bold text-danger">{job.failed}</td>
+                                  <td className="text-muted small">
+                                    {new Date(job.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                                  </td>
+                                  <td className="text-end pe-4">
                                     <Button
                                       variant="outline-primary"
                                       size="sm"
-                                      className="rounded-pill px-3 fw-medium"
+                                      className="rounded-pill px-3 py-1 small fw-medium"
                                       onClick={async () => {
                                         setLoadingDispatchDetail(true);
                                         setShowDispatchDetailModal(true);
@@ -1582,12 +2013,17 @@ The Acme Team</p>`
                                         }
                                       }}
                                     >
-                                      View
+                                      View Details
                                     </Button>
                                   </td>
                                 </tr>
                               )) : (
-                                <tr><td colSpan="6" className="text-center text-muted py-4">No dispatch jobs found.</td></tr>
+                                <tr>
+                                  <td colSpan="6" className="text-center py-5">
+                                    <div className="text-muted mb-2"><i className="bi bi-inbox fs-2"></i></div>
+                                    <span className="text-muted fw-medium">No dispatch jobs have been executed yet.</span>
+                                  </td>
+                                </tr>
                               )}
                             </tbody>
                           </Table>
@@ -1802,6 +2238,165 @@ The Acme Team</p>`
         </Modal.Body>
         <Modal.Footer className="border-0 pt-0">
           <Button variant="secondary" className="rounded-pill px-4" onClick={() => { setShowDispatchDetailModal(false); setSelectedDispatch(null); }}>Close</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* LEAD ENGAGEMENT DETAIL MODAL */}
+      <Modal
+        show={showLeadDetailModal}
+        onHide={() => { setShowLeadDetailModal(false); setSelectedLeadForDetail(null); }}
+        centered
+        size="lg"
+      >
+        <Modal.Header closeButton className="border-0 pb-0">
+          <Modal.Title className="fw-bold fs-5">
+            <i className="bi bi-person-lines-fill text-primary me-2"></i>
+            Lead Engagement Details
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="py-3">
+          {selectedLeadForDetail && (
+            <div className="d-flex flex-column gap-3">
+              {/* Lead Profile Banner */}
+              <div className="p-3 rounded-3 bg-light border d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                  <h5 className="fw-bold mb-1 text-dark">
+                    {selectedLeadForDetail.firstName} {selectedLeadForDetail.lastName}
+                  </h5>
+                  <div className="text-muted small">
+                    {[selectedLeadForDetail.jobTitle, selectedLeadForDetail.company, selectedLeadForDetail.industry].filter(Boolean).join(" • ") || "No details provided"}
+                  </div>
+                  <div className="font-monospace text-primary small mt-1">
+                    <i className="bi bi-envelope me-1"></i>{selectedLeadForDetail.email}
+                    {selectedLeadForDetail.phone && (
+                      <span className="ms-3 text-muted">
+                        <i className="bi bi-telephone me-1"></i>{selectedLeadForDetail.phone}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Badge bg="primary" className="px-3 py-2 rounded-pill fs-7 text-uppercase">
+                    List Status: {selectedLeadForDetail.listStatus}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Engagement Cards Grid */}
+              <Row className="g-3">
+                <Col md={4}>
+                  <Card className="border-0 shadow-sm rounded-3 text-center h-100 p-3 bg-light">
+                    <i className="bi bi-send-fill text-primary fs-3 mb-1"></i>
+                    <div className="text-muted small text-uppercase fw-bold">Email Status</div>
+                    <div className="fw-bold mt-1">
+                      {selectedLeadForDetail.engStatus === 'bounced'
+                        ? "Bounced"
+                        : selectedLeadForDetail.sentAt
+                        ? "Sent & Delivered"
+                        : (emailDispatches?.length > 0)
+                        ? (
+                            selectedLeadForDetail.dnc
+                            ? "Skipped (DNC)"
+                            : selectedLeadForDetail.isUnsubscribed
+                            ? "Skipped (Unsubscribed)"
+                            : selectedLeadForDetail.isHardBounced
+                            ? "Skipped (Bounced)"
+                            : "Queued / Pending"
+                          )
+                        : "Queued / Pending"}
+                    </div>
+                    {selectedLeadForDetail.sentAt && (
+                      <div className="text-muted small mt-1" style={{ fontSize: "0.72rem" }}>
+                        {new Date(selectedLeadForDetail.sentAt).toLocaleString()}
+                      </div>
+                    )}
+                  </Card>
+                </Col>
+                <Col md={4}>
+                  <Card className="border-0 shadow-sm rounded-3 text-center h-100 p-3 bg-light">
+                    <i className="bi bi-envelope-open-fill text-info fs-3 mb-1"></i>
+                    <div className="text-muted small text-uppercase fw-bold">Total Opens</div>
+                    <div className="fs-3 fw-bold text-info">{selectedLeadForDetail.openCount}</div>
+                    {selectedLeadForDetail.openedAt && (
+                      <div className="text-muted small mt-1" style={{ fontSize: "0.72rem" }}>
+                        First opened: {new Date(selectedLeadForDetail.openedAt).toLocaleString()}
+                      </div>
+                    )}
+                  </Card>
+                </Col>
+                <Col md={4}>
+                  <Card className="border-0 shadow-sm rounded-3 text-center h-100 p-3 bg-light">
+                    <i className="bi bi-cursor-fill text-warning fs-3 mb-1"></i>
+                    <div className="text-muted small text-uppercase fw-bold">Total Clicks</div>
+                    <div className="fs-3 fw-bold text-warning">{selectedLeadForDetail.clickCount}</div>
+                    {selectedLeadForDetail.clickedAt && (
+                      <div className="text-muted small mt-1" style={{ fontSize: "0.72rem" }}>
+                        First clicked: {new Date(selectedLeadForDetail.clickedAt).toLocaleString()}
+                      </div>
+                    )}
+                  </Card>
+                </Col>
+              </Row>
+
+              {/* Full Engagement & Call History Timeline */}
+              {selectedLeadForDetail.fullHistory && (
+                <div className="mt-2">
+                  <h6 className="fw-bold text-secondary text-uppercase small mb-2">Full Activity History</h6>
+                  <div className="rounded-3 border overflow-hidden p-3 bg-white">
+                    {selectedLeadForDetail.fullHistory.emailEngagements?.length > 0 && (
+                      <div className="mb-3">
+                        <div className="fw-semibold text-dark small mb-2"><i className="bi bi-envelope me-1"></i> Email History</div>
+                        <ul className="list-group list-group-flush small">
+                          {selectedLeadForDetail.fullHistory.emailEngagements.map(ee => (
+                            <li key={ee.id} className="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                              <div>
+                                <strong>{ee.campaignName}</strong>
+                                <span className="text-muted ms-2">({ee.status})</span>
+                              </div>
+                              <div className="text-muted small">
+                                {ee.openCount > 0 && <Badge bg="info" className="me-2">{ee.openCount} opens</Badge>}
+                                {ee.clickCount > 0 && <Badge bg="warning" text="dark" className="me-2">{ee.clickCount} clicks</Badge>}
+                                {ee.sentAt && new Date(ee.sentAt).toLocaleDateString()}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {selectedLeadForDetail.fullHistory.callHistory?.length > 0 && (
+                      <div>
+                        <div className="fw-semibold text-dark small mb-2"><i className="bi bi-telephone me-1"></i> Call Activity History</div>
+                        <ul className="list-group list-group-flush small">
+                          {selectedLeadForDetail.fullHistory.callHistory.map(ch => (
+                            <li key={ch.id} className="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                              <div>
+                                <strong>{ch.campaignName}</strong> - {ch.outcome}
+                                {ch.notes && <div className="text-muted text-truncate" style={{ maxWidth: 350 }}>{ch.notes}</div>}
+                              </div>
+                              <div className="text-muted small text-end">
+                                <div>by {ch.executiveName}</div>
+                                {ch.createdAt && new Date(ch.createdAt).toLocaleDateString()}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer className="border-0 pt-0">
+          <Button
+            variant="secondary"
+            className="rounded-pill px-4"
+            onClick={() => { setShowLeadDetailModal(false); setSelectedLeadForDetail(null); }}
+          >
+            Close
+          </Button>
         </Modal.Footer>
       </Modal>
 

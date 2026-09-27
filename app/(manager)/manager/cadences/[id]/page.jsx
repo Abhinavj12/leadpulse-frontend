@@ -133,7 +133,13 @@ export default function CadenceDetailsPage({ params }) {
           <Card className="border-0 shadow-sm h-100 rounded-4" style={{ background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)' }}>
             <Card.Body className="p-4 d-flex flex-column justify-content-center align-items-center text-center">
               <div className="text-primary fw-bold text-uppercase small mb-2">Accrued Billing</div>
-              <h2 className="mb-0 fw-bold text-primary display-6">{formatCurrency(billing?.accruedAmount)}</h2>
+              <h2 className="mb-0 fw-bold text-primary display-6">
+                {formatCurrency(
+                  billing?.pricingModel === 'cost_per_lead' 
+                    ? billing.amountAccrued 
+                    : (billing?.pricingModel === 'flat_retainer' ? billing.retainerAmount : null)
+                )}
+              </h2>
               <div className="small text-muted fw-medium mt-1">
                 {billing?.pricingModel === 'cost_per_lead' 
                   ? `Cost Per Lead (${formatCurrency(billing?.ratePerLead)})`

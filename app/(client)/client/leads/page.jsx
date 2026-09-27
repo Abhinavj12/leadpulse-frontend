@@ -162,16 +162,10 @@ export default function ClientLeadsCRM() {
                                   {stat.industry}
                                 </h6>
                                 <div className="mb-3">
-                                  <div className="d-flex justify-content-between mb-1 small">
-                                    <span className="text-muted fw-medium">Audience Pool</span>
-                                    <span className="fw-bold">{stat.targeted} Prospects</span>
+                                  <div className="d-flex justify-content-between align-items-center bg-white border border-secondary-subtle rounded-3 px-3 py-2 shadow-sm">
+                                    <span className="text-muted fw-semibold small">Audience Pool</span>
+                                    <span className="fw-bolder text-dark">{stat.targeted} Prospects</span>
                                   </div>
-                                  <ProgressBar 
-                                    now={100} 
-                                    variant="secondary" 
-                                    className="opacity-25"
-                                    style={{ height: '6px' }} 
-                                  />
                                 </div>
                                 <div className="d-flex gap-3 mt-4 pt-3 border-top border-secondary-subtle">
                                   <div className="flex-fill">
@@ -227,7 +221,7 @@ export default function ClientLeadsCRM() {
                       filteredLeads.map((lead, idx) => (
                         <tr key={lead.membershipId || `${lead.id}-${idx}`}>
                           <td className="px-4 py-3">
-                            <Badge bg={lead.status === 'Converted' ? 'success' : 'primary'} className="text-uppercase px-3 py-2 rounded-pill tracking-wide" style={{ fontSize: '0.7rem' }}>
+                            <Badge bg={lead.status?.toUpperCase() === 'CONVERTED' ? 'success' : 'primary'} className="text-uppercase px-3 py-2 rounded-pill tracking-wide" style={{ fontSize: '0.7rem' }}>
                               {lead.status}
                             </Badge>
                           </td>
