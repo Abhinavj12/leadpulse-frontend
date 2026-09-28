@@ -316,6 +316,7 @@ export default function CampaignManagementDashboard()
   const [bannerImageUrl, setBannerImageUrl] = useState("");
   const [bannerPreviewUrl, setBannerPreviewUrl] = useState("");
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [emailDispatches, setEmailDispatches] = useState([]);
   const [emailAnalytics, setEmailAnalytics] = useState(null);
   const [report, setReport] = useState(null);
@@ -1164,22 +1165,90 @@ The Acme Team</p>`
                             </Col>
                           </Row>
 
-                          <Form.Group className="mb-3">
-                            <Form.Label className="fw-medium d-flex justify-content-between">
-                              <span>Email Body (HTML)</span>
-                              <span className="text-muted small fw-normal">
-                                Variables: <code>{`{{first_name}}`}</code>, <code>{`{{company}}`}</code>
-                              </span>
-                            </Form.Label>
-                            <Form.Control
-                              as="textarea"
-                              rows={6}
-                              value={emailSettings.emailBodyHtml}
-                              onChange={e => setEmailSettings({ ...emailSettings, emailBodyHtml: e.target.value })}
-                              className="shadow-sm font-monospace"
-                              style={{ fontSize: '0.9rem' }}
-                            />
-                          </Form.Group>
+{/* Email Body with Live Preview Toggle */}
+<Form.Group className="mb-3">
+  <Form.Label className="fw-medium d-flex justify-content-between align-items-center">
+    <span>Email Body (HTML)</span>
+    <div className="d-flex align-items-center gap-3">
+      <span className="text-muted small fw-normal">
+        Variables: <code>{`{{first_name}}`}</code>, <code>{`{{company}}`}</code>
+      </span>
+      <Button
+        variant={showEmailPreview ? "primary" : "outline-secondary"}
+        size="sm"
+        className="rounded-pill px-3 fw-semibold"
+        onClick={() => setShowEmailPreview(prev => !prev)}
+      >
+        <i className={`bi ${showEmailPreview ? "bi-pencil" : "bi-eye"} me-1`}></i>
+        {showEmailPreview ? "Edit HTML" : "Preview Email"}
+      </Button>
+    </div>
+  </Form.Label>
+
+  {!showEmailPreview ? (
+    <Form.Control
+      as="textarea"
+      rows={6}
+      value={emailSettings.emailBodyHtml}
+      onChange={e => setEmailSettings({ ...emailSettings, emailBodyHtml: e.target.value })}
+      className="shadow-sm font-monospace"
+      style={{ fontSize: '0.9rem' }}
+    />
+  ) : (
+    <div className="border rounded-3 shadow-sm overflow-hidden" style={{ background: '#f8f9fa' }}>
+      {/* Email Client Header Bar */}
+      <div className="px-4 py-3 border-bottom bg-white">
+        <div className="mb-1 small">
+          <span className="text-muted fw-semibold">From: </span>
+          <span className="text-dark">{emailSettings.senderName || "Sender Name"}</span>
+        </div>
+        <div className="small">
+          <span className="text-muted fw-semibold">Subject: </span>
+          <span className="text-dark fw-medium">
+            {(emailSettings.subjectLine || "Email Subject")
+              .replace(/{{first_name}}/g, "John")
+              .replace(/{{company}}/g, "Acme Corp")}
+          </span>
+        </div>
+      </div>
+      {/* iframe Preview */}
+      <iframe
+        title="Email Preview"
+        style={{ width: '100%', height: '480px', border: 'none', display: 'block' }}
+        srcDoc={(() => {
+          let previewHtml = emailSettings.emailBodyHtml || "<p>No content yet.</p>";
+          previewHtml = previewHtml
+            .replace(/{{first_name}}/g, "John")
+            .replace(/{{company}}/g, "Acme Corp")
+            .replace(/{{conversion_link}}/g, '<a href="#" style="display:inline-block;padding:10px 20px;background:#0d6efd;color:white;border-radius:6px;text-decoration:none;">I am Interested</a>');
+
+          let bannerHtml = "";
+          const resolvedBanner = bannerPreviewUrl || bannerImageUrl;
+          if (resolvedBanner) {
+            bannerHtml = `<div style="text-align:center;margin-bottom:20px;"><img src="${resolvedBanner}" alt="Banner" style="max-width:100%;height:auto;border-radius:8px;" /></div>`;
+          }
+
+          return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  body { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #333; max-width: 600px; margin: 0 auto; padding: 30px 24px; background: #fff; }
+  a { color: #0d6efd; }
+  p { margin: 0 0 16px; }
+  img { max-width: 100%; }
+</style>
+</head>
+<body>
+${bannerHtml}
+${previewHtml}
+</body>
+</html>`;
+        })()}
+      />
+    </div>
+  )}
+</Form.Group>
 
                           <Form.Group className="mb-4">
                             <Form.Label className="fw-medium">Banner Image (Optional)</Form.Label>

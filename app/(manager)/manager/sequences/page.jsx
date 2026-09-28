@@ -303,7 +303,7 @@ export default function SequencesPage() {
               >
                 <option value="cost_per_lead">Cost Per Lead (CPL)</option>
                 <option value="flat_retainer">Flat Retainer</option>
-                <option value="unpriced">Unpriced (Internal)</option>
+                {/* <option value="unpriced">Unpriced (Internal)</option> */}
               </Form.Select>
             </Form.Group>
 

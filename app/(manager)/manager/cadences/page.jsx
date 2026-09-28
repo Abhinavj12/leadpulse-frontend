@@ -306,7 +306,7 @@ export default function CadencesPage() {
                 <Form.Select name="pricingModel" value={formData.pricingModel} onChange={handleChange} required>
                   <option value="cost_per_lead">Cost Per Lead (Billed on Conversion)</option>
                   <option value="flat_retainer">Flat Retainer (Fixed Fee)</option>
-                  <option value="">Unpriced</option>
+                  {/* <option value="">Unpriced</option> */}
                 </Form.Select>
               </Form.Group>
 
